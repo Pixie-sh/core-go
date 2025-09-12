@@ -3,12 +3,13 @@ package http_middlewares
 import (
 	"github.com/ansrivas/fiberprometheus/v2"
 	"github.com/gofiber/contrib/otelfiber/v2"
-	"github.com/pixie-sh/core-go/pkg/comm/http"
-	"github.com/pixie-sh/core-go/pkg/metrics"
 	"github.com/pixie-sh/logger-go/env"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/pixie-sh/core-go/pkg/comm/http"
+	"github.com/pixie-sh/core-go/pkg/metrics"
 )
 
 func Tracing(skipPaths ...string) []http.ServerHandler {

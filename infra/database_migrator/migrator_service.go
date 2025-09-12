@@ -3,11 +3,12 @@ package bo_services
 import (
 	"context"
 
+	"github.com/pixie-sh/database-helpers-go/database"
+	"github.com/pixie-sh/errors-go"
+
 	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 	"github.com/pixie-sh/core-go/pkg/models/database_models"
 	"github.com/pixie-sh/core-go/pkg/types/maps"
-	"github.com/pixie-sh/database-helpers-go/database"
-	"github.com/pixie-sh/errors-go"
 )
 
 type DatabaseMigratorService struct {

@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pixie-sh/core-go/pkg/models/database_models"
 	"github.com/pixie-sh/database-helpers-go/database"
 	"github.com/pixie-sh/errors-go"
+
+	"github.com/pixie-sh/core-go/pkg/models/database_models"
 )
 
 func HandleMigrateWithService(ctx context.Context, migrator DatabaseMigratorService, command database_models.DatabaseMigratePayload) error {

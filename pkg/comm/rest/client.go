@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	pixieEnv "github.com/pixie-sh/core-go/pkg/env"
 	"io"
 	"io/ioutil"
 	goHttp "net/http"
 	"net/url"
 	"time"
+
+	pixieEnv "github.com/pixie-sh/core-go/pkg/env"
 
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/caller"

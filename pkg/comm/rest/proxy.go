@@ -9,9 +9,10 @@ import (
 	goHttp "net/http"
 
 	"github.com/andybalholm/brotli"
-	pixieEnv "github.com/pixie-sh/core-go/pkg/env"
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
+
+	pixieEnv "github.com/pixie-sh/core-go/pkg/env"
 )
 
 type ProxyResponse = *goHttp.Response

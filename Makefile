@@ -15,7 +15,7 @@ NPROC ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu)
 
 MOCKS ?= internal
 
-ENV ?= local
+SCOPE ?= local
 
 AWS_REGION ?= eu-west-3
 AWS_PROFILE ?= default
@@ -66,7 +66,7 @@ local-test:
 test: # mocks
 	@echo "=== Running tests ==="
 	go clean -testcache
-	ENV=${ENV} go test -timeout 30s -failfast -race -coverprofile=test.cover -tags="${TAGS}" -run=${RUN} ./...
+	SCOPE=${SCOPE} go test -timeout 30s -failfast -race -coverprofile=test.cover -tags="${TAGS}" -run=${RUN} ./...
 
 	go tool cover -func=test.cover
 	rm -f test.cover

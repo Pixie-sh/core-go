@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"io"
 	"net/http"
 	"strings"
@@ -85,6 +86,7 @@ func (c *client) Upload(ctx context.Context, filePath string, fileBlob io.Reader
 		Key:         aws.String(filePath),
 		Body:        fileBlob,
 		ContentType: contentType,
+		ACL:         types.ObjectCannedACLPublicRead,
 	})
 
 	if err != nil {

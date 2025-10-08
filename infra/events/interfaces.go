@@ -23,7 +23,7 @@ type Producer interface {
 // Consumer must be implemented by consumers of Events
 type Consumer interface {
 	ConsumeBatch(ctx context.Context, handler func(context.Context, UntypedEventWrapper) error) error
-	Consume(ctx context.Context, handler func(UntypedEventWrapper) error) error
+	Consume(ctx context.Context, handler func(context.Context, UntypedEventWrapper) error) error
 }
 
 func ConsumerPanicHandler() {

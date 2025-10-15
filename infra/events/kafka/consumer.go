@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
 	"github.com/pixie-sh/logger-go/logger"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/pixie-sh/core-go/infra/events"
 	"github.com/pixie-sh/core-go/infra/message_factory"
@@ -21,14 +21,14 @@ import (
 
 type ConsumerConfiguration struct {
 	Topics                    []string      `json:"topics"`
-	ConsumerGroup            string        `json:"consumer_group"`
-	MaxBatchSize             int32         `json:"max_batch_size"`
-	PollTimeout              time.Duration `json:"poll_timeout"`
+	ConsumerGroup             string        `json:"consumer_group"`
+	MaxBatchSize              int32         `json:"max_batch_size"`
+	PollTimeout               time.Duration `json:"poll_timeout"`
 	RequeueBackoffTimeSeconds int32         `json:"requeue_backoff_time_seconds"`
 	RequeueMaxRetries         int           `json:"requeue_max_retries"`
-	WithoutScope             bool          `json:"without_scope,omitempty"`
-	AutoCommit               bool          `json:"auto_commit"`
-	StartOffset              string        `json:"start_offset"` // "earliest", "latest"
+	WithoutScope              bool          `json:"without_scope,omitempty"`
+	AutoCommit                bool          `json:"auto_commit"`
+	StartOffset               string        `json:"start_offset"` // "earliest", "latest"
 }
 
 type Consumer struct {
@@ -96,7 +96,7 @@ func NewConsumer(_ context.Context, client *Client, cfg ConsumerConfiguration) (
 			DLQTopic:          "dlq",
 			BackoffMultiplier: 2.0,
 		}
-		
+
 		// Create a producer for retry operations - we'll need to pass this separately
 		// For now, we'll set it to nil and require it to be set later
 		consumer.retryManager = NewRetryManager(nil, retryConfig)
@@ -182,7 +182,7 @@ func (c *Consumer) ConsumeBatch(ctx context.Context, handler func(context.Contex
 	}
 }
 
-// Consume it's blocking call - matches SQS interface exactly  
+// Consume it's blocking call - matches SQS interface exactly
 func (c *Consumer) Consume(ctx context.Context, handler func(context.Context, events.UntypedEventWrapper) error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -250,7 +250,7 @@ func (c *Consumer) Consume(ctx context.Context, handler func(context.Context, ev
 }
 
 func (c *Consumer) processRecord(ctx context.Context, log logger.Interface, record *kgo.Record) (*events.UntypedEventWrapper, error) {
-	wrapper, err := message_factory.Singleton.CreateFromString(ctx, string(record.Value))
+	wrapper, err := message_factory.Singleton.Create(ctx, record.Value)
 	if err != nil {
 		innerlog := log.With("kafka_record", record).With("error", err)
 
@@ -263,14 +263,20 @@ func (c *Consumer) processRecord(ctx context.Context, log logger.Interface, reco
 		}
 
 		innerlog.Error("error deserializing message")
-		c.requeueOrDelete(ctx, log, errors.New(err.Error(), errors.NoRetryErrorCode), record)
+		c.requeueOrDelete(
+			ctx,
+			log,
+			errors.Wrap(err, "error deserializing message", errors.NoRetryErrorCode),
+			record,
+		)
 		return nil, err
 	}
 
 	if !c.allowedScope(record) {
 		log.With("kafka_record", record).With("error", err).Error("scope is invalid")
-		c.requeueOrDelete(ctx, log, errors.New("invalid scope", errors.InvalidScopeRequeueErrorCode), record)
-		return nil, errors.New("invalid scope")
+		err = errors.New("invalid scope", errors.InvalidScopeRequeueErrorCode)
+		c.requeueOrDelete(ctx, log, err, record)
+		return nil, err
 	}
 
 	eventWrapper := events.NewUntypedEventWrapperFromMessage(wrapper)

@@ -31,7 +31,7 @@ require (
 	github.com/mmcloughlin/geohash v0.10.0
 	github.com/pixie-sh/database-helpers-go v0.2.16
 	github.com/pixie-sh/di-go v0.2.1
-	github.com/pixie-sh/errors-go v0.3.6
+	github.com/pixie-sh/errors-go v0.3.7
 	github.com/pixie-sh/logger-go v0.4.4
 	github.com/pixie-sh/ulid-go v1.3.2
 	github.com/prometheus/client_golang v1.23.0

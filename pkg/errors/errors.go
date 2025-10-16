@@ -19,6 +19,4 @@ var (
 	TagsInvalidFormatErrorCode                   = errors.NewErrorCode("TagsInvalidFormatErrorCode", BaseErrorCodeValue+errors.HTTPInvalidData)
 	TagsInvalidScopeErrorCode                    = errors.NewErrorCode("TagsInvalidScopeErrorCode", BaseErrorCodeValue+errors.HTTPInvalidData)
 	TagsDependencyErrorCode                      = errors.NewErrorCode("TagsDependencyErrorCode", BaseErrorCodeValue+errors.HTTPServerError)
-
-	ConfigurationLookupErrorCode = errors.NewErrorCode("ConfigurationLoadErrorCode", BaseErrorCodeValue+503)
 )

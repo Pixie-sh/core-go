@@ -300,6 +300,7 @@ func (c *Consumer) requeueOrDelete(ctx context.Context, log logger.Interface, er
 	_, hasScopeCode := errors.Has(err, errors.InvalidScopeRequeueErrorCode)
 	_, has := errors.Has(err, errors.ProcessFailedDoNotRequeueErrorCode)
 	_, haz := errors.Has(err, errors.NoRetryErrorCode)
+	_, hasError := errors.Has(err, errors.ProcessingEventErrorCode)
 
 	retryCount := c.getRetryCount(record.Headers)
 
@@ -310,7 +311,7 @@ func (c *Consumer) requeueOrDelete(ctx context.Context, log logger.Interface, er
 		haz,
 	)
 
-	if (!haz || !has || hasScopeCode) && retryCount <= c.cfg.RequeueMaxRetries {
+	if (!haz || !has || hasScopeCode || hasError) && retryCount <= c.cfg.RequeueMaxRetries {
 		log.Debug("executing requeue")
 		err = c.requeue(ctx, record, retryCount)
 		if err == nil {
@@ -333,8 +334,8 @@ func (c *Consumer) requeue(ctx context.Context, record *kgo.Record, currentRetry
 		return c.retryManager.SendToRetry(ctx, record, currentRetryCount, record.Topic)
 	}
 
-	// If no retry manager, just commit (delete) the message
-	return c.commitRecord(ctx, record)
+	// If no retry manager, just not commit the message, consumer will have it again
+	return nil
 }
 
 func (c *Consumer) getRetryCount(headers []kgo.RecordHeader) int {

@@ -188,8 +188,8 @@ github.com/pixie-sh/database-helpers-go v0.2.16 h1:dHIgJ7kE9pQFaE6ejyEc2XCK5hxGr
 github.com/pixie-sh/database-helpers-go v0.2.16/go.mod h1:m8A3PH5XNhaORMA4vT9CqqKHBi7esx19go71w6jnZ7k=
 github.com/pixie-sh/di-go v0.2.1 h1:xSmM49sFKaPmggEbv9qJsBUdumqybioc2bxMhB+lmqU=
 github.com/pixie-sh/di-go v0.2.1/go.mod h1:ybMB3VZu9AiQ+K4xmM4lDTIka/tOn8TC4zNrNMOnGo8=
-github.com/pixie-sh/errors-go v0.3.6 h1:i8Hie+Kx1YXDw8ifwS9U0bbBDjpaPT4C7Lw947xX5J0=
-github.com/pixie-sh/errors-go v0.3.6/go.mod h1:rDwoMPeRVE7tY2XnM+eNJrV9niHuk0qcOfDnAy1IRGg=
+github.com/pixie-sh/errors-go v0.3.7 h1:RVHmBwoQmEkgboygEln2g9zvVSIPyjPOzkywjTFoIZM=
+github.com/pixie-sh/errors-go v0.3.7/go.mod h1:rDwoMPeRVE7tY2XnM+eNJrV9niHuk0qcOfDnAy1IRGg=
 github.com/pixie-sh/logger-go v0.4.4 h1:3br4QUVsIWLG02Hc/QwruoRWvWY456D4+RiMuJus8lE=
 github.com/pixie-sh/logger-go v0.4.4/go.mod h1:BeQAP6KwcjybrnjjpyaDrc9bxvstTo4ZFALqul44nl0=
 github.com/pixie-sh/ulid-go v1.3.2 h1:yjvKk40iotocT52u4BA7VqgUddTQOJt6G9jUaO+9Lww=

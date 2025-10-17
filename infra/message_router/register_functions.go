@@ -32,3 +32,22 @@ func Register[M any](handler func(context.Context, *M) error, router *Router) {
 		}
 	})
 }
+
+func RegisterFallback(handler func(context.Context, *message_wrapper.UntypedMessage) error, router *Router) {
+	router.Register(types.PayloadTypeFallback, func(ctx *RouterContext) {
+		log := pixiecontext.GetCtxLogger(ctx).With("event_id", ctx.Request.ID)
+		log.Log("processing untyped event '%s' of type '%s' on handler of '%s'", ctx.Request.ID, ctx.Request.PayloadType, types.PayloadTypeFallback)
+		err := handler(ctx.Context, ctx.Request)
+		if err != nil {
+			log.With("error", err).Log("message processed with error")
+			castedErr, ok := errors.As(err)
+			if ok {
+				ctx.Error = castedErr
+			}
+
+			if !ok {
+				log.Error("error is not unknown, unable to process it")
+			}
+		}
+	})
+}

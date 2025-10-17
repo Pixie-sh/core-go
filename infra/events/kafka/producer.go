@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
 	"github.com/pixie-sh/logger-go/logger"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/pixie-sh/core-go/infra/events"
 	"github.com/pixie-sh/core-go/infra/message_wrapper"
@@ -16,47 +16,18 @@ import (
 )
 
 type ProducerConfiguration struct {
-	ProducerID     string                                    `json:"producer_id"`
-	Topic          string                                    `json:"topic"`
-	PartitionKey   func(events.UntypedEventWrapper) []byte   `json:"-"` // Function to extract partition key
-	CheckSize      func([]byte) error                        `json:"-"` // Function to validate message size
-	Compression    string                                    `json:"compression"` // "none", "gzip", "snappy", "lz4", "zstd"
-	Idempotent     bool                                      `json:"idempotent"`
-	MaxMessageSize int                                       `json:"max_message_size"`
-}
-
-// KafkaClient interface to match what Producer expects (similar to SQS Client interface)
-type KafkaClient interface {
-	ProduceSync(ctx context.Context, rs ...*kgo.Record) kgo.ProduceResults
+	ProducerID     string                                  `json:"producer_id"`
+	Topic          string                                  `json:"topic"`
+	PartitionKey   func(events.UntypedEventWrapper) []byte `json:"-"` // Function to extract partition key
+	MaxMessageSize int                                     `json:"max_message_size"`
 }
 
 type Producer struct {
-	cfg    ProducerConfiguration
-	client KafkaClient
+	cfg    *ProducerConfiguration
+	client *Client
 }
 
-func NewProducer(_ context.Context, client KafkaClient, cfg ProducerConfiguration) (*Producer, error) {
-	if cfg.CheckSize == nil {
-		cfg.CheckSize = func(b []byte) error {
-			const (
-				maxMessageSize = 1048576 // 1 MB for Kafka default
-			)
-			if len(b) > maxMessageSize {
-				return errors.New("message size %d bytes exceeds maximum allowed size of %d bytes",
-					len(b),
-					maxMessageSize,
-					errors.FieldError{
-						Field:   "payload_size",
-						Rule:    "payloadTooLong",
-						Param:   fmt.Sprintf("%d", len(b)),
-						Message: fmt.Sprintf("payload size %d bytes exceeds maximum allowed size of %d bytes", len(b), maxMessageSize),
-					},
-					errors.ProducerErrorCode)
-			}
-			return nil
-		}
-	}
-
+func NewProducer(_ context.Context, client *Client, cfg *ProducerConfiguration) (*Producer, error) {
 	return &Producer{
 		client: client,
 		cfg:    cfg,
@@ -80,19 +51,8 @@ func (p *Producer) ProduceBatch(ctx context.Context, wrappers ...events.UntypedE
 			continue
 		}
 
-		err = p.cfg.CheckSize(payload)
-		if err != nil {
-			pixiecontext.GetCtxLogger(ctx).
-				With("error", err).
-				With("event_wrapper", wrapper).
-				Error("batch issue checking payload size", wrapper.PayloadType)
-
-			return err
-		}
-
 		headers := p.appendPayloadType(ctx, wrapper.PayloadType, wrapper.ID, messageHeaders)
 
-		// Build partition key if function is provided
 		var key []byte
 		if p.cfg.PartitionKey != nil {
 			key = p.cfg.PartitionKey(wrapper)
@@ -109,13 +69,13 @@ func (p *Producer) ProduceBatch(ctx context.Context, wrappers ...events.UntypedE
 	}
 
 	log.Debug("generated kafka records len(%d) for topic %s", len(records), p.cfg.Topic)
-	results := p.client.ProduceSync(ctx, records...)
+	results := p.client.kgoClient.ProduceSync(ctx, records...)
 
 	// Check for errors in batch results
 	for _, result := range results {
 		if result.Err != nil {
 			log.With("error", result.Err).Error("failed to produce message to topic %s", result.Record.Topic)
-			return fmt.Errorf("kafka produce error: %w", result.Err)
+			return errors.Wrap(result.Err, "kafka produce error")
 		}
 	}
 
@@ -127,16 +87,6 @@ func (p *Producer) Produce(ctx context.Context, wrapper events.UntypedEventWrapp
 	var log = pixiecontext.GetCtxLogger(ctx)
 	payload, err := serializer.Serialize(wrapper.UntypedMessage)
 	if err != nil {
-		return err
-	}
-
-	err = p.cfg.CheckSize(payload)
-	if err != nil {
-		pixiecontext.GetCtxLogger(ctx).
-			With("error", err).
-			With("event_wrapper", wrapper).
-			Error("issue checking payload size", wrapper.PayloadType)
-
 		return err
 	}
 
@@ -156,11 +106,11 @@ func (p *Producer) Produce(ctx context.Context, wrapper events.UntypedEventWrapp
 		Headers: headers,
 	}
 
-	results := p.client.ProduceSync(ctx, record)
+	results := p.client.kgoClient.ProduceSync(ctx, record)
 	for _, result := range results {
 		if result.Err != nil {
 			log.With("error", result.Err).Error("failed to produce message to topic %s", result.Record.Topic)
-			return fmt.Errorf("kafka produce error: %w", result.Err)
+			return errors.Wrap(result.Err, "kafka produce error")
 		}
 	}
 
@@ -176,18 +126,7 @@ func (p *Producer) ProduceWithTopic(ctx context.Context, wrapper message_wrapper
 		return err
 	}
 
-	err = p.cfg.CheckSize(payload)
-	if err != nil {
-		pixiecontext.GetCtxLogger(ctx).
-			With("error", err).
-			With("event_wrapper", wrapper).
-			Error("issue checking payload size", wrapper.PayloadType)
-
-		return err
-	}
-
 	headers := p.appendPayloadType(ctx, wrapper.PayloadType, wrapper.ID, nil)
-
 	record := &kgo.Record{
 		Topic:   topic,
 		Key:     partitionKey,
@@ -195,7 +134,7 @@ func (p *Producer) ProduceWithTopic(ctx context.Context, wrapper message_wrapper
 		Headers: headers,
 	}
 
-	results := p.client.ProduceSync(ctx, record)
+	results := p.client.kgoClient.ProduceSync(ctx, record)
 	for _, result := range results {
 		if result.Err != nil {
 			log.With("error", result.Err).Error("failed to produce message to topic %s", result.Record.Topic)
@@ -243,18 +182,4 @@ func (p *Producer) appendPayloadType(ctx context.Context, payloadType string, ev
 	})
 
 	return headers
-}
-
-// Make sure Client implements KafkaClient interface
-type ClientAdapter struct {
-	*Client
-}
-
-func (c *ClientAdapter) ProduceSync(ctx context.Context, rs ...*kgo.Record) kgo.ProduceResults {
-	return c.kgoClient.ProduceSync(ctx, rs...)
-}
-
-// Helper function to create adapter
-func NewClientAdapter(client *Client) *ClientAdapter {
-	return &ClientAdapter{Client: client}
 }

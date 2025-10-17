@@ -38,7 +38,7 @@ type Consumer struct {
 	retryManager *RetryManager
 }
 
-func NewConsumer(_ context.Context, client *Client, cfg ConsumerConfiguration) (*Consumer, error) {
+func NewConsumer(_ context.Context, client *Client, cfg *ConsumerConfiguration) (*Consumer, error) {
 	// Configure consumer group and topics
 	opts := []kgo.Opt{
 		kgo.ConsumerGroup(cfg.ConsumerGroup),
@@ -76,7 +76,6 @@ func NewConsumer(_ context.Context, client *Client, cfg ConsumerConfiguration) (
 				return true
 			}
 
-			// Find scope header
 			for _, header := range record.Headers {
 				if header.Key == env.Scope {
 					scope := env.EnvScope()

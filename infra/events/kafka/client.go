@@ -21,6 +21,7 @@ type ClientConfiguration struct {
 	TLS            *TLSConfig    `json:"tls,omitempty"`
 	RetryBackoff   time.Duration `json:"retry_backoff"`
 	RequestTimeout time.Duration `json:"request_timeout"`
+	Compression    string        `json:"compression"` // "none", "gzip", "snappy", "lz4", "zstd"
 }
 
 type SASLConfig struct {
@@ -40,11 +41,11 @@ type TLSConfig struct {
 // Client is an abstraction over the franz-go Kafka client
 type Client struct {
 	kgoClient *kgo.Client
-	cfg       ClientConfiguration
+	cfg       *ClientConfiguration
 }
 
 // NewClient creates a new Kafka client with the given configuration
-func NewClient(ctx context.Context, cfg ClientConfiguration) (*Client, error) {
+func NewClient(_ context.Context, cfg *ClientConfiguration) (*Client, error) {
 	opts := buildKgoOpts(cfg)
 
 	kgoClient, err := kgo.NewClient(opts...)
@@ -71,10 +72,23 @@ func (c *Client) GetKgoClient() *kgo.Client {
 }
 
 // buildKgoOpts builds the kgo options from the configuration
-func buildKgoOpts(cfg ClientConfiguration) []kgo.Opt {
+func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(cfg.Brokers...),
 		kgo.WithLogger(kgo.BasicLogger(os.Stderr, kgo.LogLevelWarn, nil)),
+	}
+
+	if len(cfg.Compression) > 0 {
+		switch cfg.Compression {
+		case "gzip":
+			opts = append(opts, kgo.ProducerBatchCompression(kgo.GzipCompression()))
+		case "snappy":
+			opts = append(opts, kgo.ProducerBatchCompression(kgo.SnappyCompression()))
+		case "lz4":
+			opts = append(opts, kgo.ProducerBatchCompression(kgo.Lz4Compression()))
+		case "zstd":
+			opts = append(opts, kgo.ProducerBatchCompression(kgo.ZstdCompression()))
+		}
 	}
 
 	// Set client ID if provided

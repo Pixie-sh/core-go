@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type RetryConfiguration struct {
@@ -19,11 +19,11 @@ type RetryConfiguration struct {
 }
 
 type RetryManager struct {
-	producer KafkaClient
+	producer *Client
 	cfg      RetryConfiguration
 }
 
-func NewRetryManager(producer KafkaClient, cfg RetryConfiguration) *RetryManager {
+func NewRetryManager(producer *Client, cfg RetryConfiguration) *RetryManager {
 	return &RetryManager{
 		producer: producer,
 		cfg:      cfg,
@@ -49,7 +49,7 @@ func (r *RetryManager) SendToRetry(ctx context.Context, record *kgo.Record, retr
 
 	// Increment retry count in headers
 	newHeaders := r.incrementRetryCount(record.Headers, retryCount+1)
-	
+
 	// Add original topic header
 	newHeaders = append(newHeaders, kgo.RecordHeader{
 		Key:   "x-original-topic",
@@ -103,17 +103,17 @@ func (r *RetryManager) SendToDLQ(ctx context.Context, record *kgo.Record, origin
 	// Add DLQ headers
 	dlqHeaders := make([]kgo.RecordHeader, len(record.Headers))
 	copy(dlqHeaders, record.Headers)
-	
+
 	dlqHeaders = append(dlqHeaders, kgo.RecordHeader{
 		Key:   "x-original-topic",
 		Value: []byte(originalTopic),
 	})
-	
+
 	dlqHeaders = append(dlqHeaders, kgo.RecordHeader{
 		Key:   "x-dlq-reason",
 		Value: []byte(reason),
 	})
-	
+
 	dlqHeaders = append(dlqHeaders, kgo.RecordHeader{
 		Key:   "x-dlq-timestamp",
 		Value: []byte(time.Now().UTC().Format(time.RFC3339)),
@@ -210,16 +210,11 @@ func (r *RetryManager) GetOriginalTopic(headers []kgo.RecordHeader) string {
 
 // IsRetryTopic checks if a topic is a retry topic
 func (r *RetryManager) IsRetryTopic(topic string) bool {
-	return len(topic) > len(r.cfg.RetryTopicPrefix) && 
-		   topic[:len(r.cfg.RetryTopicPrefix)] == r.cfg.RetryTopicPrefix
+	return len(topic) > len(r.cfg.RetryTopicPrefix) &&
+		topic[:len(r.cfg.RetryTopicPrefix)] == r.cfg.RetryTopicPrefix
 }
 
 // IsDLQTopic checks if a topic is the DLQ topic
 func (r *RetryManager) IsDLQTopic(topic string) bool {
 	return topic == r.cfg.DLQTopic
-}
-
-// SetProducer allows setting the producer after retry manager creation
-func (r *RetryManager) SetProducer(producer KafkaClient) {
-	r.producer = producer
 }

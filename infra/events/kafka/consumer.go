@@ -32,7 +32,7 @@ type ConsumerConfiguration struct {
 }
 
 type Consumer struct {
-	cfg          ConsumerConfiguration
+	cfg          *ConsumerConfiguration
 	client       *Client
 	allowedScope func(*kgo.Record) bool
 	retryManager *RetryManager

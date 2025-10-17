@@ -71,6 +71,11 @@ func (c *Client) GetKgoClient() *kgo.Client {
 	return c.kgoClient
 }
 
+// ProduceSync implements the KafkaClient interface
+func (c *Client) ProduceSync(ctx context.Context, rs ...*kgo.Record) kgo.ProduceResults {
+	return c.kgoClient.ProduceSync(ctx, rs...)
+}
+
 // buildKgoOpts builds the kgo options from the configuration
 func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
 	opts := []kgo.Opt{

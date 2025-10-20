@@ -4,7 +4,6 @@ import (
 	"context"
 	"runtime/debug"
 	"strconv"
-	"time"
 
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
@@ -20,15 +19,12 @@ import (
 )
 
 type ConsumerConfiguration struct {
-	Topics                    []string      `json:"topics"`
-	ConsumerGroup             string        `json:"consumer_group"`
-	MaxBatchSize              int32         `json:"max_batch_size"`
-	PollTimeout               time.Duration `json:"poll_timeout"`
-	RequeueBackoffTimeSeconds int32         `json:"requeue_backoff_time_seconds"`
-	RequeueMaxRetries         int           `json:"requeue_max_retries"`
-	WithoutScope              bool          `json:"without_scope,omitempty"`
-	AutoCommit                bool          `json:"auto_commit"`
-	StartOffset               string        `json:"start_offset"` // "earliest", "latest"
+	Topics            []string `json:"topics"`
+	ConsumerGroup     string   `json:"consumer_group"`
+	RequeueMaxRetries int      `json:"requeue_max_retries"`
+	WithoutScope      bool     `json:"without_scope,omitempty"`
+	AutoCommit        bool     `json:"auto_commit"`
+	StartOffset       string   `json:"start_offset"` // "earliest", "latest"
 }
 
 type Consumer struct {

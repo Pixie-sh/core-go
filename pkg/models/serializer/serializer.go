@@ -29,7 +29,7 @@ func Serialize(event interface{}) ([]byte, error) {
 	}
 }
 
-// Deserialize a model into struct
+// Deserialize a model into struct. withValidations default is true
 func Deserialize(blob []byte, dest interface{}, withValidations ...bool) error {
 	if blob == nil || len(blob) == 0 || !types.IsJSON(blob) {
 		return errors.NewValidationError("provided payload is invalid, must be json")

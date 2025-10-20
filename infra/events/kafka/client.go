@@ -11,17 +11,19 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
+
+	coretime "github.com/pixie-sh/core-go/pkg/time"
 )
 
 // ClientConfiguration holds the configuration for the Kafka client
 type ClientConfiguration struct {
-	Brokers        []string      `json:"brokers"`
-	ClientID       string        `json:"client_id"`
-	SASL           *SASLConfig   `json:"sasl,omitempty"`
-	TLS            *TLSConfig    `json:"tls,omitempty"`
-	RetryBackoff   time.Duration `json:"retry_backoff"`
-	RequestTimeout time.Duration `json:"request_timeout"`
-	Compression    string        `json:"compression"` // "none", "gzip", "snappy", "lz4", "zstd"
+	Brokers        []string          `json:"brokers"`
+	ClientID       string            `json:"client_id"`
+	SASL           *SASLConfig       `json:"sasl,omitempty"`
+	TLS            *TLSConfig        `json:"tls,omitempty"`
+	RetryBackoff   coretime.Duration `json:"retry_backoff"`
+	RequestTimeout coretime.Duration `json:"request_timeout"`
+	Compression    string            `json:"compression"` // "none", "gzip", "snappy", "lz4", "zstd"
 }
 
 type SASLConfig struct {
@@ -104,13 +106,13 @@ func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
 	// Configure retry backoff
 	if cfg.RetryBackoff > 0 {
 		opts = append(opts, kgo.RetryBackoffFn(func(tries int) time.Duration {
-			return cfg.RetryBackoff * time.Duration(tries)
+			return cfg.RetryBackoff.Duration() * time.Duration(tries)
 		}))
 	}
 
 	// Configure request timeout
 	if cfg.RequestTimeout > 0 {
-		opts = append(opts, kgo.RequestTimeoutOverhead(cfg.RequestTimeout))
+		opts = append(opts, kgo.RequestTimeoutOverhead(cfg.RequestTimeout.Duration()))
 	}
 
 	// Configure SASL authentication

@@ -16,7 +16,7 @@ import (
 type RouterContext struct {
 	context.Context
 
-	Request message_wrapper.UntypedMessage
+	Request *message_wrapper.UntypedMessage
 	Values  map[string]interface{}
 
 	//if Router.Handle functions is used
@@ -52,7 +52,7 @@ func NewRouterContext(ctx context.Context) *RouterContext {
 }
 
 func (rc *RouterContext) WithRequest(request message_wrapper.UntypedMessage) *RouterContext {
-	rc.Request = request
+	rc.Request = &request
 	return rc
 }
 

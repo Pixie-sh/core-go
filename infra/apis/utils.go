@@ -7,7 +7,7 @@ import (
 	"github.com/pixie-sh/core-go/pkg/models/serializer"
 )
 
-func processRaw[T any](log logger.Interface, blobResp []byte, err error, dest *response_models.Response[T], withValidations ...bool) error {
+func ProcessRaw[T any](log logger.Interface, blobResp []byte, err error, dest *response_models.Response[T], withValidations ...bool) error {
 	if err != nil {
 		if len(blobResp) > 0 {
 			if errDeserialize := serializer.Deserialize(blobResp, dest, false); errDeserialize != nil {
@@ -15,7 +15,7 @@ func processRaw[T any](log logger.Interface, blobResp []byte, err error, dest *r
 					With("error", err).
 					With("error_deserialize", errDeserialize).
 					With("blob_response", blobResp).
-					Error("processRaw issue deserializing body")
+					Error("ProcessRaw issue deserializing body")
 
 				return err
 			}
@@ -44,7 +44,7 @@ func processRaw[T any](log logger.Interface, blobResp []byte, err error, dest *r
 	return nil
 }
 
-func processUnknownRaw[T any](log logger.Interface, blobResp []byte, err error, dest *T, withValidations ...bool) error {
+func ProcessUnknownRaw[T any](log logger.Interface, blobResp []byte, err error, dest *T, withValidations ...bool) error {
 	if err != nil {
 		if len(blobResp) > 0 {
 			if errDeserialize := serializer.Deserialize(blobResp, dest, false); errDeserialize != nil {
@@ -52,7 +52,7 @@ func processUnknownRaw[T any](log logger.Interface, blobResp []byte, err error, 
 					With("error", err).
 					With("error_deserialize", errDeserialize).
 					With("blob_response", blobResp).
-					Error("processRaw issue deserializing body")
+					Error("ProcessRaw issue deserializing body")
 
 				return err
 			}

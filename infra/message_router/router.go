@@ -6,14 +6,14 @@ import (
 	"runtime/debug"
 	"sync"
 
-	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
-
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/logger"
 
 	"github.com/pixie-sh/core-go/infra/message_wrapper"
+	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 	"github.com/pixie-sh/core-go/pkg/pubsub"
 	"github.com/pixie-sh/core-go/pkg/types"
+	"github.com/pixie-sh/core-go/pkg/types/maps"
 	"github.com/pixie-sh/core-go/pkg/uid"
 )
 
@@ -149,7 +149,7 @@ func (r *Router) routing(ctx *RouterContext) {
 	if !ok {
 		handlers, ok = r.handlers[types.PayloadTypeFallback]
 		if !ok {
-			ssa := r.createSSA(request, errors.New("no handlers provided").WithErrorCode(errors.ErrorPerformingRequestErrorCode))
+			ssa := r.createSSA(*request, errors.New("no handlers provided").WithErrorCode(errors.ErrorPerformingRequestErrorCode))
 
 			logger.Logger.
 				With("request", request).
@@ -166,7 +166,7 @@ func (r *Router) routing(ctx *RouterContext) {
 	}
 
 	if ctx.Error != nil {
-		ssa := r.createSSA(request, ctx.Error)
+		ssa := r.createSSA(*request, ctx.Error)
 		logger.Logger.
 			With("request", request).
 			With("error", ctx.Error).
@@ -178,7 +178,7 @@ func (r *Router) routing(ctx *RouterContext) {
 	}
 
 	//prepend ssa
-	ctx.Responses = append([]message_wrapper.UntypedMessage{r.createSSA(request, nil)}, ctx.Responses...)
+	ctx.Responses = append([]message_wrapper.UntypedMessage{r.createSSA(*request, nil)}, ctx.Responses...)
 }
 
 func (r *Router) iterateHandlers(rc *RouterContext, handlers []MessageHandler) {
@@ -272,4 +272,11 @@ func (r *Router) Handle(ctx context.Context, message message_wrapper.UntypedMess
 	}
 
 	return nil
+}
+
+func (r *Router) RegisteredMessages() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return maps.MapKeys(r.handlers)
 }

@@ -4,6 +4,7 @@ LOCAL_MODULE ?= github.com/pixie-sh/core-go
 GOARCH ?= $(shell go env GOARCH)
 GOOS ?= $(shell go env GOOS)
 GOTAGS ?= netgo,osusergo
+GOSUMDB ?= sum.golang.org
 
 ifeq ($(GOOS),darwin)
     CGO_ENABLED ?= 1
@@ -31,11 +32,19 @@ BIN_PATH ?= bin
 clean:
 	rm -rf bin
 
-build: clean # build-template
+build: clean ensure-deps
 	mkdir bin
 	@echo "=== Building application ==="
 	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} GOTAGS=${GOTAGS} go build ./...
 	GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags=$(LDFLAGS) -o bin/ $(MAIN_PACKAGES)
+
+ensure-deps:
+	@echo "=== Ensuring Deps ==="
+	@GOSUMDB=$(GOSUMDB) go version
+	@GOSUMDB=$(GOSUMDB) go mod tidy
+	@GOSUMDB=$(GOSUMDB) go get ./...
+	@GOSUMDB=$(GOSUMDB) go env GOPRIVATE
+	@GOSUMDB=$(GOSUMDB) go mod tidy
 
 ###################################
 ######        TESTING        ######

@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 )
 
 type RetryConfiguration struct {

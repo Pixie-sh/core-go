@@ -42,8 +42,8 @@ func ConvertWeekdaysToUTC(weekdays []int32, timezone string) ([]int32, error) {
 		return nil, fmt.Errorf("invalid timezone: %v", err)
 	}
 
-	now := time.Now()
-
+	// Use a fixed reference week in July 2023 (during DST for most timezones)
+	// July 2, 2023 was a Sunday, so we can easily calculate each weekday
 	utcWeekdaysMap := make(map[int32]bool)
 
 	for _, weekday := range weekdays {
@@ -52,19 +52,12 @@ func ConvertWeekdaysToUTC(weekdays []int32, timezone string) ([]int32, error) {
 			return nil, fmt.Errorf("weekday must be between 0 (Sunday) and 6 (Saturday)")
 		}
 
-		// Calculate the date of the next occurrence of this weekday
-		daysToAdd := (int(weekday) - int(now.Weekday()) + 7) % 7
-		targetDate := now.AddDate(0, 0, daysToAdd)
+		// Create midnight on the given weekday in the reference week (July 2-8, 2023)
+		// in the specified timezone
+		day := 2 + int(weekday) // July 2 is Sunday (0), July 3 is Monday (1), etc.
+		midnight := time.Date(2023, 7, day, 0, 0, 0, 0, loc)
 
-		// Create a time at midnight in the specified timezone
-		midnight := time.Date(
-			targetDate.Year(),
-			targetDate.Month(),
-			targetDate.Day(),
-			0, 0, 0, 0,
-			loc,
-		)
-
+		// Convert to UTC and get the weekday
 		utcTime := midnight.UTC()
 		utcWeekday := int32(utcTime.Weekday())
 		utcWeekdaysMap[utcWeekday] = true

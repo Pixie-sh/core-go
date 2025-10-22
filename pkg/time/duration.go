@@ -3,8 +3,9 @@ package time
 import (
 	gotime "time"
 
-	"github.com/pixie-sh/core-go/pkg/models/serializer"
 	"github.com/pixie-sh/errors-go"
+
+	"github.com/pixie-sh/core-go/pkg/models/serializer"
 )
 
 type Duration gotime.Duration

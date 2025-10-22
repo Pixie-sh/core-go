@@ -3,10 +3,11 @@ package message_router
 import (
 	"context"
 
+	"github.com/pixie-sh/errors-go"
+
 	"github.com/pixie-sh/core-go/infra/message_wrapper"
 	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 	"github.com/pixie-sh/core-go/pkg/types"
-	"github.com/pixie-sh/errors-go"
 )
 
 func Register[M any](handler func(context.Context, *M) error, router *Router) {

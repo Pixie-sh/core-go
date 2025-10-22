@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 

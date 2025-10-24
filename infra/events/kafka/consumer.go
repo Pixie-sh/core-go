@@ -2,8 +2,10 @@ package kafka
 
 import (
 	"context"
+	"encoding/base64"
 	"runtime/debug"
 	"strconv"
+	"time"
 
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
@@ -142,6 +144,12 @@ func (c *Consumer) ConsumeBatch(ctx context.Context, handler func(context.Contex
 				}
 			})
 
+			// In batch mode, to enforce Behavior A, if any record in the batch fails,
+			// we will not commit any offsets from this batch. If all succeed, we commit
+			// the last record per topic/partition.
+			batchFailed := false
+			lastRecordPerTP := make(map[string]*kgo.Record) // key: topic-partition
+
 			for i := range wrappers {
 				traceID := uid.NewUUID()
 				requestLog := pixiecontext.GetCtxLogger(ctx)
@@ -152,25 +160,27 @@ func (c *Consumer) ConsumeBatch(ctx context.Context, handler func(context.Contex
 				requestCtx = pixiecontext.SetCtxTraceID(requestCtx, traceID)
 
 				err = handler(requestCtx, wrappers[i])
+				rec := wrappers[i].GetHeader("kafka.record").(*kgo.Record)
 				if err != nil {
+					batchFailed = true
 					requestLog.With("error", err).Error("error processing batch messages")
-					c.requeueOrDelete(ctx, requestLog, err, wrappers[i].GetHeader("kafka.record").(*kgo.Record))
+					c.requeueOrDelete(ctx, requestLog, err, rec)
 					continue
 				}
 
-				// Commit the message if not auto-commit
-				if !c.cfg.AutoCommit {
-					err = c.commitRecord(ctx, wrappers[i].GetHeader("kafka.record").(*kgo.Record))
-					if err != nil {
-						requestLog.Error("error committing message offset")
-					}
+				// Track highest offset per topic/partition for successful records
+				key := rec.Topic + ":" + strconv.Itoa(int(rec.Partition))
+				if existing, ok := lastRecordPerTP[key]; !ok || rec.Offset > existing.Offset {
+					lastRecordPerTP[key] = rec
 				}
 			}
 
-			// If auto-commit is disabled, commit all at once after processing batch
-			if !c.cfg.AutoCommit && len(wrappers) > 0 {
-				if err := c.client.kgoClient.CommitUncommittedOffsets(ctx); err != nil {
-					log.With("error", err).Error("error committing batch offsets")
+			// Commit only if all records in the batch succeeded and auto-commit is disabled
+			if !c.cfg.AutoCommit && !batchFailed {
+				for _, rec := range lastRecordPerTP {
+					if err := c.commitRecord(ctx, rec); err != nil {
+						log.Error("error committing message offset")
+					}
 				}
 			}
 		}
@@ -204,9 +214,9 @@ func (c *Consumer) Consume(ctx context.Context, handler func(context.Context, ev
 				continue
 			}
 
-			log := pixiecontext.GetCtxLogger(ctx)
-
 			fetches.EachPartition(func(p kgo.FetchTopicPartition) {
+
+				log := pixiecontext.GetCtxLogger(ctx)
 				for _, record := range p.Records {
 					wrapper, err := c.processRecord(ctx, log.With("kafka_record", record), record)
 					if err != nil {
@@ -226,7 +236,13 @@ func (c *Consumer) Consume(ctx context.Context, handler func(context.Context, ev
 
 					err = handler(requestCtx, *wrapper)
 					if err != nil {
-						requestLog.With("error", err).Error("error processing message %s", record.Offset)
+						requestLog.
+							With("error", err).
+							With("topic", record.Topic).
+							With("partition", record.Partition).
+							With("offset", record.Offset).
+							Error("error processing message")
+
 						c.requeueOrDelete(ctx, log, err, record)
 						continue
 					}
@@ -235,7 +251,11 @@ func (c *Consumer) Consume(ctx context.Context, handler func(context.Context, ev
 					if !c.cfg.AutoCommit {
 						err = c.commitRecord(ctx, record)
 						if err != nil {
-							log.Error("error committing message offset %d", record.Offset)
+							log.With(
+								"topic", record.Topic).
+								With("partition", record.Partition).
+								With("offset", record.Offset).
+								Error("error committing message offset")
 						}
 					}
 				}
@@ -288,10 +308,34 @@ func (c *Consumer) processRecord(ctx context.Context, log logger.Interface, reco
 }
 
 func (c *Consumer) commitRecord(ctx context.Context, record *kgo.Record) error {
+	pixiecontext.GetCtxLogger(ctx).
+		With("topic", record.Topic).
+		With("partition", record.Partition).
+		With("offset", record.Offset).Log("committing offset")
+
 	return c.client.kgoClient.CommitRecords(ctx, record)
 }
 
 func (c *Consumer) requeueOrDelete(ctx context.Context, log logger.Interface, err error, record *kgo.Record) {
+
+	var retryUntil = c.getRetryDeadline(record.Headers)
+	var now = time.Now().UnixMilli()
+
+	if retryUntil > 0 && now > retryUntil {
+		base64Message := base64.StdEncoding.EncodeToString(record.Value)
+		log.With("topic", record.Topic).
+			With("partition", record.Partition).
+			With("offset", record.Offset).
+			With("message_base64", base64Message).
+			Error("Message retry deadline exceeded, dropping message (deserialization failed)")
+
+		commitErr := c.commitRecord(ctx, record)
+		if commitErr != nil {
+			log.With("error", commitErr).Error("error committing message after deadline exceeded %s", record.Offset)
+		}
+		return
+	}
+
 	_, hasScopeCode := errors.Has(err, errors.InvalidScopeRequeueErrorCode)
 	_, has := errors.Has(err, errors.ProcessFailedDoNotRequeueErrorCode)
 	_, haz := errors.Has(err, errors.NoRetryErrorCode)
@@ -300,16 +344,19 @@ func (c *Consumer) requeueOrDelete(ctx context.Context, log logger.Interface, er
 	retryCount := c.getRetryCount(record.Headers)
 
 	log.Log(
-		"evaluating if it's for deletion. scopeInvalid: %t ; processFailedNotRequeue: %t ; nonRetriableError: %t",
+		"evaluating if it's for deletion. scopeInvalid: %t ; processFailedNotRequeue: %t ; nonRetriableError: %t; retryCount: %d ; maxRetries: %d",
 		hasScopeCode,
 		has,
 		haz,
+		retryCount,
+		c.cfg.RequeueMaxRetries,
 	)
 
 	if (!haz || !has || hasScopeCode || hasError) && retryCount <= c.cfg.RequeueMaxRetries {
 		log.Debug("executing requeue")
 		err = c.requeue(ctx, record, retryCount)
 		if err == nil {
+			log.Debug("left uncommitted, requeue succeeded.")
 			return
 		}
 
@@ -324,6 +371,21 @@ func (c *Consumer) requeueOrDelete(ctx context.Context, log logger.Interface, er
 	}
 }
 
+func (c *Consumer) getRetryDeadline(headers []kgo.RecordHeader) int64 {
+	for _, header := range headers {
+		if header.Key == XRetryUntilHeader {
+			parsedValue, parseErr := strconv.ParseInt(string(header.Value), 10, 64)
+			if parseErr == nil {
+				return parsedValue
+			}
+
+			break
+		}
+	}
+
+	return 0
+}
+
 func (c *Consumer) requeue(ctx context.Context, record *kgo.Record, currentRetryCount int) error {
 	if c.retryManager != nil {
 		return c.retryManager.SendToRetry(ctx, record, currentRetryCount, record.Topic)
@@ -335,7 +397,7 @@ func (c *Consumer) requeue(ctx context.Context, record *kgo.Record, currentRetry
 
 func (c *Consumer) getRetryCount(headers []kgo.RecordHeader) int {
 	for _, header := range headers {
-		if header.Key == "x-retry-count" {
+		if header.Key == XRetryCountHeader {
 			count, err := strconv.Atoi(string(header.Value))
 			if err != nil {
 				return 0

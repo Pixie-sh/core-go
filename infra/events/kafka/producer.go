@@ -3,7 +3,10 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
+	coretime "github.com/pixie-sh/core-go/pkg/time"
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
 	"github.com/pixie-sh/logger-go/logger"
@@ -16,10 +19,11 @@ import (
 )
 
 type ProducerConfiguration struct {
-	ProducerID     string                                  `json:"producer_id"`
-	Topic          string                                  `json:"topic"`
-	PartitionKey   func(events.UntypedEventWrapper) []byte `json:"-"` // Function to extract partition key
-	MaxMessageSize int                                     `json:"max_message_size"`
+	ProducerID         string                                  `json:"producer_id"`
+	Topic              string                                  `json:"topic"`
+	PartitionKey       func(events.UntypedEventWrapper) []byte `json:"-"` // Function to extract partition key
+	MaxMessageSize     int                                     `json:"max_message_size"`
+	RetryUntilDuration coretime.Duration                       `json:"retry_until_duration"` // Default: 10 minutes
 }
 
 type Producer struct {
@@ -163,6 +167,17 @@ func (p *Producer) createHeaders(ctx context.Context) []kgo.RecordHeader {
 		Value: []byte(pixiecontext.GetCtxTraceID(ctx)),
 	})
 
+	retryUntilDuration := p.cfg.RetryUntilDuration
+	if retryUntilDuration == 0 {
+		retryUntilDuration = coretime.Duration(10 * time.Minute)
+	}
+
+	retryUntilMillis := time.Now().UnixMilli() + retryUntilDuration.Duration().Milliseconds()
+	headers = append(headers, kgo.RecordHeader{
+		Key:   XRetryUntilHeader,
+		Value: []byte(strconv.FormatInt(retryUntilMillis, 10)),
+	})
+
 	return headers
 }
 
@@ -172,12 +187,12 @@ func (p *Producer) appendPayloadType(ctx context.Context, payloadType string, ev
 	}
 
 	headers = append(headers, kgo.RecordHeader{
-		Key:   "x-payload-type",
+		Key:   XPayloadTypeHeader,
 		Value: []byte(payloadType),
 	})
 
 	headers = append(headers, kgo.RecordHeader{
-		Key:   "x-event-id",
+		Key:   XEventIDHeader,
 		Value: []byte(eventID),
 	})
 

@@ -71,7 +71,7 @@ func (f *Factory) Create(_ context.Context, blob []byte) (message_wrapper.Untype
 
 	entry, ok := f.knownMessages[types.PayloadType(payloadTypeOnly.PayloadType)]
 	if !ok {
-		return message_wrapper.UntypedMessage{}, errors.NewValidationError("event type not registered", &errors.FieldError{
+		return message_wrapper.UntypedMessage{}, errors.New("event type '%s' not registered", payloadTypeOnly.PayloadType, &errors.FieldError{
 			Field:   "payload_type",
 			Rule:    "invalidPayloadType",
 			Message: "event type " + payloadTypeOnly.PayloadType + " not registered",

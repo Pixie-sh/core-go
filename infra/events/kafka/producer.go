@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-	
+
 	"github.com/pixie-sh/errors-go"
 	"github.com/pixie-sh/logger-go/env"
 	"github.com/pixie-sh/logger-go/logger"

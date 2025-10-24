@@ -16,6 +16,7 @@ import (
 	"github.com/pixie-sh/core-go/infra/message_wrapper"
 	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
 	"github.com/pixie-sh/core-go/pkg/models/serializer"
+	coretime "github.com/pixie-sh/core-go/pkg/time"
 )
 
 type ProducerConfiguration struct {

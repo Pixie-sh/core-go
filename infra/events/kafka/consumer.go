@@ -327,7 +327,7 @@ func (c *Consumer) requeueOrDelete(ctx context.Context, log logger.Interface, er
 			With("partition", record.Partition).
 			With("offset", record.Offset).
 			With("message_base64", base64Message).
-			Error("Message retry deadline exceeded, dropping message (deserialization failed)")
+			Error("Message retry deadline exceeded, dropping message")
 
 		commitErr := c.commitRecord(ctx, record)
 		if commitErr != nil {

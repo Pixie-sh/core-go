@@ -72,7 +72,7 @@ local-test:
 	$(MAKE) test; docker compose down
 
 # no mocks available yet
-test: # mocks
+test: ensure-deps# mocks
 	@echo "=== Running tests ==="
 	go clean -testcache
 	SCOPE=${SCOPE} go test -timeout 30s -failfast -race -coverprofile=test.cover -tags="${TAGS}" -run=${RUN} ./...

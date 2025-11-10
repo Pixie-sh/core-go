@@ -3,14 +3,13 @@ package hash
 import (
 	"crypto/sha256"
 	"crypto/sha512"
-	"encoding/json"
 	"fmt"
 
-	gojson "github.com/goccy/go-json"
+	"github.com/pixie-sh/core-go/pkg/models/serializer"
 )
 
 func ComputeSHA256(v interface{}) (string, error) {
-	data, err := gojson.Marshal(v)
+	data, err := serializer.Serialize(v)
 	if err != nil {
 		return "", err
 	}
@@ -19,7 +18,7 @@ func ComputeSHA256(v interface{}) (string, error) {
 }
 
 func ComputeSHA512(v interface{}) (string, error) {
-	data, err := json.Marshal(v)
+	data, err := serializer.Serialize(v)
 	if err != nil {
 		return "", err
 	}

@@ -1,3 +1,16 @@
 .idea
 test.cover
 /.warp/
+/AGENTS.md
+/specs
+/opencode.json
+/.utcp_config.json
+/.opencode
+/.opencode/agent
+/.opencode/command
+/.opencode/install_guides
+/.opencode/scripts
+/.opencode/skill
+/.opencode/knowledge
+/.opencode/knowledge/assets
+/.opencode/knowledge/references

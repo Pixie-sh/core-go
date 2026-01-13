@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,25 +47,52 @@ type Client struct {
 // NewClient receives the header key to be used for ms authorization,
 // a map with host and token to be used when performing request to those hosts
 // timeout for rest request hanging. returns a Client ptr that implements IClient
+//
+// Disable HTTP/2 to avoid HPACK encoder panic under high concurrency.
+// See: https://github.com/golang/go/issues/47882
 func NewClient(_ context.Context, cfg *ClientConfiguration) Client {
+	var client *goHttp.Client
+	if cfg.GoClient != nil {
+		client = cfg.GoClient
+	} else {
+		client = &goHttp.Client{
+			Timeout: time.Millisecond * time.Duration(cfg.Timeout),
+			Transport: &goHttp.Transport{
+				ForceAttemptHTTP2: false,
+				TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) goHttp.RoundTripper),
+			},
+		}
+	}
+
 	return Client{
 		headerKey: cfg.HeaderAPIKey,
 		apiKeys:   cfg.APIKeys,
-		client: &goHttp.Client{
-			Timeout: time.Millisecond * time.Duration(cfg.Timeout),
-		},
+		client:    client,
 	}
 }
 
 // NewNakedClient receives the header key to be used for ms authorization,
 // a map with host and token to be used when performing request to those hosts
 // timeout for rest request hanging. returns a Client ptr that implements IClient
+// Disable HTTP/2 to avoid HPACK encoder panic under high concurrency.
+// See: https://github.com/golang/go/issues/47882
 func NewNakedClient(timeout time.Duration) *Client {
 	return &Client{
 		apiKeys: make(map[string]string),
 		client: &goHttp.Client{
 			Timeout: timeout,
+			Transport: &goHttp.Transport{
+				ForceAttemptHTTP2: false,
+				TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) goHttp.RoundTripper),
+			},
 		},
+	}
+}
+
+func NewNakedClientWithGoClient(_ context.Context, client *goHttp.Client) *Client {
+	return &Client{
+		apiKeys: make(map[string]string),
+		client:  client,
 	}
 }
 

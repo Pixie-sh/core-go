@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pixie-sh/database-helpers-go/database"
 	"github.com/pixie-sh/errors-go"
@@ -68,9 +69,23 @@ func MigratorOrderedListOf(registeredDatabaseMigrations map[database_models.Data
 			panic(errors.Join(errors.New("Unable to parse migration ID"), errI, errJ))
 		}
 
-		// Compare epochs
-		return epochI < epochJ
+		// Compare epochs by their timestamp value (supports both seconds and milliseconds)
+		// Convert to time.Time to handle different epoch precisions correctly
+		timeI := convertEpochToTime(epochI)
+		timeJ := convertEpochToTime(epochJ)
+		return timeI.Before(timeJ)
 	})
 
 	return allMigrations
+}
+
+// convertEpochToTime converts epoch timestamp to time.Time
+// Handles both seconds and milliseconds precision automatically
+func convertEpochToTime(epoch int64) time.Time {
+	// If epoch is in milliseconds (typical range > 10^12), convert to seconds
+	if epoch > 1e12 {
+		return time.Unix(0, epoch*int64(time.Millisecond))
+	}
+	// Otherwise treat as seconds
+	return time.Unix(epoch, 0)
 }

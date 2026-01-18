@@ -36,7 +36,7 @@ type Consumer struct {
 	retryManager *RetryManager
 }
 
-func NewConsumer(_ context.Context, client *Client, cfg *ConsumerConfiguration) (*Consumer, error) {
+func NewConsumer(ctx context.Context, client *Client, cfg *ConsumerConfiguration) (*Consumer, error) {
 	// Configure consumer group and topics
 	opts := []kgo.Opt{
 		kgo.ConsumerGroup(cfg.ConsumerGroup),
@@ -65,6 +65,13 @@ func NewConsumer(_ context.Context, client *Client, cfg *ConsumerConfiguration) 
 	// Replace the client's kgoClient with the consumer-configured one
 	client.kgoClient.Close()
 	client.kgoClient = consumerClient
+
+	// Eagerly verify connection to Kafka brokers at startup.
+	// This prevents lazy connection failures that would only manifest later during consumption.
+	if _, err := client.GetTopics(ctx); err != nil {
+		client.kgoClient.Close()
+		return nil, errors.New("failed to connect to kafka brokers: %w", err)
+	}
 
 	consumer := &Consumer{
 		client: client,

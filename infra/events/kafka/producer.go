@@ -2,7 +2,6 @@ package kafka
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -31,7 +30,13 @@ type Producer struct {
 	client *Client
 }
 
-func NewProducer(_ context.Context, client *Client, cfg *ProducerConfiguration) (*Producer, error) {
+func NewProducer(ctx context.Context, client *Client, cfg *ProducerConfiguration) (*Producer, error) {
+	// Eagerly verify connection to Kafka brokers at startup.
+	// This prevents lazy connection failures that would only manifest later during production.
+	if _, err := client.GetTopics(ctx); err != nil {
+		return nil, errors.New("failed to connect to kafka brokers: %w", err)
+	}
+
 	return &Producer{
 		client: client,
 		cfg:    cfg,
@@ -142,7 +147,7 @@ func (p *Producer) ProduceWithTopic(ctx context.Context, wrapper message_wrapper
 	for _, result := range results {
 		if result.Err != nil {
 			log.With("error", result.Err).Error("failed to produce message to topic %s", result.Record.Topic)
-			return fmt.Errorf("kafka produce error: %w", result.Err)
+			return errors.Wrap(result.Err, "kafka producer error")
 		}
 	}
 

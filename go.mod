@@ -40,6 +40,7 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	github.com/stretchr/testify v1.11.1
 	github.com/twmb/franz-go v1.19.5
+	github.com/twmb/franz-go/pkg/kmsg v1.11.2
 	github.com/twpayne/go-geom v1.6.1
 	github.com/wI2L/jsondiff v0.7.0
 	go.opentelemetry.io/otel v1.38.0
@@ -106,7 +107,6 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/twmb/franz-go/pkg/kmsg v1.11.2 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.65.0 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect

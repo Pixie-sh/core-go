@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/pixie-sh/errors-go"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	pixiecontext "github.com/pixie-sh/core-go/pkg/context"
@@ -85,7 +86,7 @@ func (r *RetryManager) SendToRetry(ctx context.Context, record *kgo.Record, retr
 	for _, result := range results {
 		if result.Err != nil {
 			log.With("error", result.Err).Error("failed to send message to retry topic %s", retryTopic)
-			return fmt.Errorf("failed to send to retry topic: %w", result.Err)
+			return errors.Wrap(result.Err, "failed to send to retry topic: %w")
 		}
 	}
 
@@ -133,7 +134,7 @@ func (r *RetryManager) SendToDLQ(ctx context.Context, record *kgo.Record, origin
 	for _, result := range results {
 		if result.Err != nil {
 			log.With("error", result.Err).Error("failed to send message to DLQ %s", r.cfg.DLQTopic)
-			return fmt.Errorf("failed to send to DLQ: %w", result.Err)
+			return errors.New("failed to send to DLQ: %w", result.Err)
 		}
 	}
 

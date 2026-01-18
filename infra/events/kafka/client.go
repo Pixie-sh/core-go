@@ -4,14 +4,18 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"os"
 	"time"
 
+	"github.com/pixie-sh/errors-go"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 
+	"github.com/pixie-sh/core-go/pkg/types"
+
+	"github.com/pixie-sh/core-go/pkg/base64"
 	coretime "github.com/pixie-sh/core-go/pkg/time"
 )
 
@@ -35,8 +39,11 @@ type SASLConfig struct {
 type TLSConfig struct {
 	Enabled            bool   `json:"enabled"`
 	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
+	CertBase64         string `json:"cert_base64,omitempty"`
 	CertFile           string `json:"cert_file,omitempty"`
+	KeyBase64          string `json:"key_base64,omitempty"`
 	KeyFile            string `json:"key_file,omitempty"`
+	CABase64           string `json:"ca_base64,omitempty"`
 	CAFile             string `json:"ca_file,omitempty"`
 }
 
@@ -52,7 +59,7 @@ func NewClient(_ context.Context, cfg *ClientConfiguration) (*Client, error) {
 
 	kgoClient, err := kgo.NewClient(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka client: %w", err)
+		return nil, errors.New("failed to create kafka client: %w", err)
 	}
 
 	return &Client{
@@ -68,6 +75,38 @@ func (c *Client) Close() {
 	}
 }
 
+// GetTopics fetches the list of topics from the Kafka cluster.
+// This verifies connectivity and returns available topics.
+// Useful for eager connection validation at startup.
+func (c *Client) GetTopics(ctx context.Context) ([]string, error) {
+	if c.kgoClient == nil {
+		return nil, errors.New("kafka client is nil")
+	}
+
+	// Create a metadata request to fetch all topics (nil Topics = all topics)
+	req := kmsg.NewMetadataRequest()
+	req.Topics = nil // nil means fetch all topics
+
+	resp, err := c.kgoClient.Request(ctx, &req)
+	if err != nil {
+		return nil, errors.New("failed to fetch metadata from kafka: %w", err)
+	}
+
+	metadataResp, ok := resp.(*kmsg.MetadataResponse)
+	if !ok {
+		return nil, errors.New("unexpected response type from kafka metadata request")
+	}
+
+	topics := make([]string, 0, len(metadataResp.Topics))
+	for _, topic := range metadataResp.Topics {
+		if topic.Topic != nil {
+			topics = append(topics, *topic.Topic)
+		}
+	}
+
+	return topics, nil
+}
+
 // GetKgoClient returns the underlying kgo.Client for direct access when needed
 func (c *Client) GetKgoClient() *kgo.Client {
 	return c.kgoClient
@@ -76,6 +115,16 @@ func (c *Client) GetKgoClient() *kgo.Client {
 // ProduceSync implements the KafkaClient interface
 func (c *Client) ProduceSync(ctx context.Context, rs ...*kgo.Record) kgo.ProduceResults {
 	return c.kgoClient.ProduceSync(ctx, rs...)
+}
+
+// decodeBase64 decodes a base64-encoded string and returns the decoded bytes.
+// Returns nil and an error if decoding fails.
+func decodeBase64(encoded string) ([]byte, error) {
+	decoded, err := base64.Decode(encoded)
+	if err != nil {
+		return nil, errors.New("failed to decode base64: %w", err)
+	}
+	return types.UnsafeBytes(decoded), nil
 }
 
 // buildKgoOpts builds the kgo options from the configuration
@@ -142,21 +191,45 @@ func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
 			InsecureSkipVerify: cfg.TLS.InsecureSkipVerify,
 		}
 
-		// Load client certificates if provided
-		if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
+		// Load client certificates - base64 takes precedence over file paths
+		if cfg.TLS.CertBase64 != "" && cfg.TLS.KeyBase64 != "" {
+			// Decode base64-encoded certificate and key
+			certPEM, err := decodeBase64(cfg.TLS.CertBase64)
+			if err == nil {
+				keyPEM, err := decodeBase64(cfg.TLS.KeyBase64)
+				if err == nil {
+					cert, err := tls.X509KeyPair(certPEM, keyPEM)
+					if err == nil {
+						tlsConfig.Certificates = []tls.Certificate{cert}
+					}
+				}
+			}
+		} else if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
+			// Fall back to file-based certificates
 			cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
 			if err == nil {
 				tlsConfig.Certificates = []tls.Certificate{cert}
 			}
 		}
 
-		// Load CA certificate if provided
-		if cfg.TLS.CAFile != "" {
-			caCert, err := os.ReadFile(cfg.TLS.CAFile)
-			if err == nil {
-				caCertPool := x509.NewCertPool()
-				caCertPool.AppendCertsFromPEM(caCert)
-				tlsConfig.RootCAs = caCertPool
+		// Load CA certificate - base64 takes precedence over file paths
+		if !cfg.TLS.InsecureSkipVerify {
+			if cfg.TLS.CABase64 != "" {
+				// Decode base64-encoded CA certificate
+				caCertPEM, err := decodeBase64(cfg.TLS.CABase64)
+				if err == nil {
+					caCertPool := x509.NewCertPool()
+					caCertPool.AppendCertsFromPEM(caCertPEM)
+					tlsConfig.RootCAs = caCertPool
+				}
+			} else if cfg.TLS.CAFile != "" {
+				// Fall back to file-based CA certificate
+				caCert, err := os.ReadFile(cfg.TLS.CAFile)
+				if err == nil {
+					caCertPool := x509.NewCertPool()
+					caCertPool.AppendCertsFromPEM(caCert)
+					tlsConfig.RootCAs = caCertPool
+				}
 			}
 		}
 

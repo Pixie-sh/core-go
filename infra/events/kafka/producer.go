@@ -33,8 +33,14 @@ type Producer struct {
 func NewProducer(ctx context.Context, client *Client, cfg *ProducerConfiguration) (*Producer, error) {
 	// Eagerly verify connection to Kafka brokers at startup.
 	// This prevents lazy connection failures that would only manifest later during production.
-	if _, err := client.GetTopics(ctx); err != nil {
+	existingTopics, err := client.GetTopics(ctx)
+	if err != nil {
 		return nil, errors.New("failed to connect to kafka brokers: %w", err)
+	}
+
+	// Validate that the configured topic exists in the broker
+	if err := validateTopicsExist([]string{cfg.Topic}, existingTopics); err != nil {
+		return nil, err
 	}
 
 	return &Producer{

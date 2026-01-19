@@ -68,9 +68,16 @@ func NewConsumer(ctx context.Context, client *Client, cfg *ConsumerConfiguration
 
 	// Eagerly verify connection to Kafka brokers at startup.
 	// This prevents lazy connection failures that would only manifest later during consumption.
-	if _, err := client.GetTopics(ctx); err != nil {
+	existingTopics, err := client.GetTopics(ctx)
+	if err != nil {
 		client.kgoClient.Close()
 		return nil, errors.New("failed to connect to kafka brokers: %w", err)
+	}
+
+	// Validate that all configured topics exist in the broker
+	if err := validateTopicsExist(cfg.Topics, existingTopics); err != nil {
+		client.kgoClient.Close()
+		return nil, err
 	}
 
 	consumer := &Consumer{

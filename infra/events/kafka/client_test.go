@@ -339,3 +339,96 @@ func TestClient_GetTopics_NilClient(t *testing.T) {
 		t.Errorf("expected error message %q, got %q", expectedMsg, err.Error())
 	}
 }
+
+func TestValidateTopicsExist_AllTopicsExist(t *testing.T) {
+	configured := []string{"topic-a", "topic-b"}
+	existing := []string{"topic-a", "topic-b", "topic-c"}
+
+	err := validateTopicsExist(configured, existing)
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+func TestValidateTopicsExist_MissingTopics(t *testing.T) {
+	configured := []string{"topic-a", "topic-missing"}
+	existing := []string{"topic-a", "topic-b", "topic-c"}
+
+	err := validateTopicsExist(configured, existing)
+	if err == nil {
+		t.Fatal("expected error for missing topics")
+	}
+
+	if !containsString(err.Error(), "topic-missing") {
+		t.Errorf("expected error to mention missing topic, got: %v", err)
+	}
+}
+
+func TestValidateTopicsExist_NoTopicsConfigured(t *testing.T) {
+	configured := []string{}
+	existing := []string{"topic-a", "topic-b"}
+
+	err := validateTopicsExist(configured, existing)
+	if err == nil {
+		t.Fatal("expected error for empty configured topics")
+	}
+
+	if !containsString(err.Error(), "no topics configured") {
+		t.Errorf("expected 'no topics configured' error, got: %v", err)
+	}
+}
+
+func TestValidateTopicsExist_EmptyTopicNames(t *testing.T) {
+	// Simulates unresolved environment variables
+	configured := []string{"", ""}
+	existing := []string{"topic-a", "topic-b"}
+
+	err := validateTopicsExist(configured, existing)
+	if err == nil {
+		t.Fatal("expected error for empty topic names")
+	}
+
+	if !containsString(err.Error(), "all configured topics are empty") {
+		t.Errorf("expected 'all configured topics are empty' error, got: %v", err)
+	}
+}
+
+func TestValidateTopicsExist_MixedEmptyAndValid(t *testing.T) {
+	// One valid, one empty (unresolved env var)
+	configured := []string{"", "topic-a"}
+	existing := []string{"topic-a", "topic-b"}
+
+	err := validateTopicsExist(configured, existing)
+	if err != nil {
+		t.Errorf("expected no error when at least one valid topic exists, got: %v", err)
+	}
+}
+
+func TestValidateTopicsExist_MixedEmptyAndMissing(t *testing.T) {
+	// One empty, one missing
+	configured := []string{"", "topic-missing"}
+	existing := []string{"topic-a", "topic-b"}
+
+	err := validateTopicsExist(configured, existing)
+	if err == nil {
+		t.Fatal("expected error for missing topic")
+	}
+
+	if !containsString(err.Error(), "topic-missing") {
+		t.Errorf("expected error to mention missing topic, got: %v", err)
+	}
+}
+
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && searchString(s, substr)))
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

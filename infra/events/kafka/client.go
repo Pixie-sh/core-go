@@ -127,6 +127,47 @@ func decodeBase64(encoded string) ([]byte, error) {
 	return types.UnsafeBytes(decoded), nil
 }
 
+// validateTopicsExist checks that all configured topics exist in the broker.
+// Returns an error listing any missing topics.
+func validateTopicsExist(configuredTopics []string, existingTopics []string) error {
+	if len(configuredTopics) == 0 {
+		return errors.New("no topics configured")
+	}
+
+	existingSet := make(map[string]struct{}, len(existingTopics))
+	for _, t := range existingTopics {
+		existingSet[t] = struct{}{}
+	}
+
+	var missingTopics []string
+	for _, topic := range configuredTopics {
+		if topic == "" {
+			continue // Skip empty topic names (unresolved env vars)
+		}
+		if _, exists := existingSet[topic]; !exists {
+			missingTopics = append(missingTopics, topic)
+		}
+	}
+
+	// Check if all topics were empty (unresolved env vars)
+	hasValidTopic := false
+	for _, topic := range configuredTopics {
+		if topic != "" {
+			hasValidTopic = true
+			break
+		}
+	}
+	if !hasValidTopic {
+		return errors.New("all configured topics are empty (check environment variables)")
+	}
+
+	if len(missingTopics) > 0 {
+		return errors.New("configured topics do not exist in broker: %v", missingTopics)
+	}
+
+	return nil
+}
+
 // buildKgoOpts builds the kgo options from the configuration
 func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
 	opts := []kgo.Opt{

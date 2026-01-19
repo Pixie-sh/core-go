@@ -88,12 +88,12 @@ func errorHandlerWithCustomProcessor(ctx ServerCtx, errInput error) error {
 // ParseQueryParameters map the query parameters to map
 // query is the map key
 // string array are the list of comma separated values of that key
-func ParseQueryParameters(ctx ServerCtx) map[string][]string {
+func ParseQueryParameters(ctx ServerCtx, withSplit ...bool) map[string][]string {
 	queryParams := map[string][]string{}
 	ctx.Context().QueryArgs().VisitAll(func(key []byte, val []byte) {
 		k := *structs.UnsafeString(key)
 		v := *structs.UnsafeString(val)
-		if strings.Contains(v, ",") {
+		if strings.Contains(v, ",") && (len(withSplit) > 0 && withSplit[0]) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				queryParams[k] = append(queryParams[k], values[i])

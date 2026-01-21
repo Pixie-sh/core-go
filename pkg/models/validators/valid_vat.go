@@ -2,9 +2,9 @@ package validators
 
 import "fmt"
 
-func IsValidVATValidator(country string, predicate func(string) bool) ValidatorPair {
+func IsValidStringFormatValidator(country string, predicate func(string) bool) ValidatorPair {
 	return ValidatorPair{
-		ValidatorTag: fmt.Sprintf("vat:%s", country),
+		ValidatorTag: fmt.Sprintf("stringFormat:%s", country),
 		ValidatorFn: func(fl Field) bool {
 			field := fl.Field()
 

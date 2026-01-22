@@ -141,7 +141,7 @@ func (c *Client) Do(ctx context.Context, method http.Method, fullURL string, bod
 		ec := errors.ErrorPerformingRequestErrorCode
 
 		ec.HTTPError = res.StatusCode
-		return res.Body, res, errors.New("%d http response", res.StatusCode).WithErrorCode(ec)
+		return res.Body, res, errors.New("rest response %d on %s %s", res.StatusCode, req.Method, req.URL.Path).WithErrorCode(ec)
 	}
 
 	return res.Body, res, nil

@@ -37,6 +37,14 @@ func StructToMap[T map[string]interface{}](fromStruct any, withFromValidations .
 		return nil, err
 	}
 
+	// mapstructure copies *time.Time pointer fields directly into the result map
+	// without invoking the decode hook. Post-process to serialize them.
+	for k, v := range result {
+		if tp, ok := v.(*time.Time); ok {
+			result[k] = SerializeTimeToMap(tp)
+		}
+	}
+
 	return result, nil
 }
 
@@ -105,15 +113,36 @@ func stringToTimeHook(f reflect.Type, t reflect.Type, data interface{}) (interfa
 		return parsedTime, nil
 	}
 
-	if f == reflect.TypeOf(map[string]interface{}{}) && t == reflect.TypeOf(time.Time{}) {
-		dataCasted, ok := data.(map[string]interface{})
-		if !ok {
-			return nil, validators.HandleError(errors.New("data is not a map"))
-		}
-
-		parsedTime, err := DeserializeMapToTime(dataCasted)
+	if f == reflect.TypeOf("") && t == reflect.TypeOf(&time.Time{}) {
+		parsedTime, err := time.Parse(time.RFC3339, data.(string))
 		if err != nil {
 			return nil, err
+		}
+		return &parsedTime, nil
+	}
+
+	if t == reflect.TypeOf(time.Time{}) || t == reflect.TypeOf(&time.Time{}) {
+		var timeData map[string]interface{}
+
+		switch d := data.(type) {
+		case map[string]interface{}:
+			timeData = d
+		case map[string]string:
+			timeData = make(map[string]interface{}, len(d))
+			for k, v := range d {
+				timeData[k] = v
+			}
+		default:
+			return data, nil
+		}
+
+		parsedTime, err := DeserializeMapToTime(timeData)
+		if err != nil {
+			return nil, err
+		}
+
+		if t == reflect.TypeOf(&time.Time{}) {
+			return parsedTime, nil
 		}
 		return *parsedTime, nil
 	}
@@ -124,6 +153,11 @@ func stringToTimeHook(f reflect.Type, t reflect.Type, data interface{}) (interfa
 func timeToStringHook(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
 	if f == reflect.TypeOf(&time.Time{}) {
 		return SerializeTimeToMap(data.(*time.Time)), nil
+	}
+
+	if f == reflect.TypeOf(time.Time{}) {
+		tt := data.(time.Time)
+		return SerializeTimeToMap(&tt), nil
 	}
 
 	return data, nil

@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/pixie-sh/core-go/pkg/types"
 )
 
 type metadataWithTime struct {
@@ -18,6 +20,16 @@ type structWithPointers struct {
 	RequiredField string  `json:"required_field" validate:"required"`
 	OptionalStr   *string `json:"optional_str,omitempty"`
 	OptionalInt   *int    `json:"optional_int,omitempty"`
+}
+
+type metadataWithPointerTime struct {
+	ID        string     `json:"id"`
+	CreatedAt *time.Time `json:"created_at"`
+}
+
+type metadataWithNonPointerTime struct {
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func TestValidateMetadataWithTime(t *testing.T) {
@@ -44,6 +56,90 @@ func TestValidateMetadataWithTime(t *testing.T) {
 
 	if metadata.BlockLastStatusDate.UTC().Format(time.RFC3339) != metadata2.BlockLastStatusDate.UTC().Format(time.RFC3339) {
 		t.Errorf("Expected metadata and metadata2 to be equal, but they are not")
+	}
+}
+
+func TestStructToMapValueTimeField(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+
+	metadata := metadataWithTime{
+		BlockID:                        "123",
+		BlockVersion:                   "v1",
+		BlockLastStatusDate:            now,
+		BlockLastStatusChangedByUserID: 1,
+	}
+
+	result, err := StructToMap(metadata)
+	if err != nil {
+		t.Fatalf("StructToMap failed: %v", err)
+	}
+
+	raw, exists := result["block_last_status_date"]
+	if !exists {
+		t.Fatal("block_last_status_date key missing from result map")
+	}
+
+	expected := now.Format(time.RFC3339)
+
+	switch m := raw.(type) {
+	case map[string]string:
+		if m["RFC3339"] != expected {
+			t.Errorf("expected RFC3339=%q, got %q", expected, m["RFC3339"])
+		}
+	case map[string]interface{}:
+		val, _ := m["RFC3339"].(string)
+		if val != expected {
+			t.Errorf("expected RFC3339=%q, got %q", expected, val)
+		}
+	default:
+		t.Fatalf("expected map with RFC3339 key for time field, got %T: %v", raw, raw)
+	}
+}
+
+func TestRoundTripPointerTimeField(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+
+	original := metadataWithPointerTime{
+		ID:        "abc",
+		CreatedAt: &now,
+	}
+
+	payload, err := StructToMap[map[string]interface{}](original)
+	if err != nil {
+		t.Fatalf("StructToMap failed: %v", err)
+	}
+
+	raw, exists := payload["created_at"]
+	if !exists {
+		t.Fatal("created_at key missing from result map")
+	}
+
+	// Verify the serialized form has the RFC3339 key
+	switch m := raw.(type) {
+	case map[string]string:
+		if m["RFC3339"] == "" {
+			t.Fatal("RFC3339 key empty in serialized time map")
+		}
+	case map[string]interface{}:
+		if m["RFC3339"] == nil {
+			t.Fatal("RFC3339 key missing in serialized time map")
+		}
+	default:
+		t.Fatalf("expected map with RFC3339 key for time field, got %T: %v", raw, raw)
+	}
+
+	var restored metadataWithNonPointerTime
+	err = ToStruct(payload, &restored)
+	if err != nil {
+		t.Fatalf("ToStruct failed: %v", err)
+	}
+
+	if types.IsEmpty(restored.CreatedAt) {
+		t.Fatal("restored CreatedAt is nil")
+	}
+
+	if restored.CreatedAt.UTC().Format(time.RFC3339) != now.Format(time.RFC3339) {
+		t.Errorf("expected %q, got %q", now.Format(time.RFC3339), restored.CreatedAt.UTC().Format(time.RFC3339))
 	}
 }
 

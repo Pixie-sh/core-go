@@ -14,3 +14,7 @@ test.cover
 /.opencode/knowledge
 /.opencode/knowledge/assets
 /.opencode/knowledge/references
+/CLAUDE.md
+/.claude
+/.claude/settings.local.json
+/.claude/commands

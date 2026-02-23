@@ -583,3 +583,34 @@ func TestEnvReplacementWithStructInJSONExtensive(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+// double-level anonymous embedding with env-substituted integer
+// Regression test: anonymous (embedded) struct fields must have their promoted
+// fields coerced from quoted strings to the correct Go primitive type.
+func TestFixTypedPrimitivesAnonymousEmbed(t *testing.T) {
+	// innerCfg is the deepest level with an integer field
+	type innerCfg struct {
+		DB int `json:"db"`
+	}
+
+	// middleCfg anonymously embeds innerCfg (promotes DB to middleCfg's namespace)
+	type middleCfg struct {
+		innerCfg
+	}
+
+	// outerCfg anonymously embeds middleCfg (promotes DB to outerCfg's namespace)
+	type outerCfg struct {
+		middleCfg
+		Name string `json:"name"`
+	}
+
+	// JSON has "db" as a quoted string — simulates env-var substitution artifact
+	jsonData := `{"db": "0", "name": "test"}`
+
+	var holder outerCfg
+	_, err := StructFromJSONBytesWithEnvReplace([]byte(jsonData), &holder, logger.Logger)
+	assert.Nil(t, err, "StructFromJSONBytesWithEnvReplace should not error on anonymous embedded struct with quoted integer")
+
+	assert.Equal(t, 0, holder.DB, "DB field should be coerced from string \"0\" to int 0")
+	assert.Equal(t, "test", holder.Name, "Name field should remain as string")
+}

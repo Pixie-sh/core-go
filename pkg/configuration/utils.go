@@ -108,6 +108,11 @@ func StructFromJSONBytesWithEnvReplace(fileContent []byte, holder interface{}, l
 		return nil, errors.Wrap(err, "error applying environment priority overrides")
 	}
 
+	fileContent, err = fixTypedPrimitives(fileContent, holder, log)
+	if err != nil {
+		return nil, errors.Wrap(err, "error fixing typed primitives")
+	}
+
 	err = fromJSONBytes(fileContent, holder)
 	if err != nil {
 		log.
@@ -549,6 +554,128 @@ func fromTomlBytes(tomlBytes []byte, holder interface{}) error {
 	}
 
 	return nil
+}
+
+// fixTypedPrimitives unmarshals JSON into a map, walks it against the holder's struct type
+// to convert string values to their expected Go primitive types (int, bool, float, etc.),
+// and re-marshals if any conversions were made. This fixes issues where environment variable
+// substitution produces quoted strings for non-string struct fields.
+func fixTypedPrimitives(jsonBytes []byte, holder interface{}, log logger.Interface) ([]byte, error) {
+	var jsonMap map[string]interface{}
+	if err := gojson.Unmarshal(jsonBytes, &jsonMap); err != nil {
+		// If parsing fails, return original (might not be JSON object)
+		return jsonBytes, nil
+	}
+
+	holderType := reflect.TypeOf(holder)
+	for holderType.Kind() == reflect.Ptr {
+		holderType = holderType.Elem()
+	}
+
+	if holderType.Kind() != reflect.Struct {
+		return jsonBytes, nil
+	}
+
+	modified := fixTypedPrimitivesRecursive(jsonMap, holderType, log)
+
+	if !modified {
+		return jsonBytes, nil
+	}
+
+	return gojson.Marshal(jsonMap)
+}
+
+// fixTypedPrimitivesRecursive recursively walks the JSON map and Go type in parallel,
+// converting string values to their expected types. For anonymous (embedded) struct fields,
+// it recurses with the same jsonMap since Go promotes embedded fields to the parent's
+// JSON namespace (flat structure).
+func fixTypedPrimitivesRecursive(jsonMap map[string]interface{}, goType reflect.Type, log logger.Interface) bool {
+	modified := false
+
+	for goType.Kind() == reflect.Ptr {
+		goType = goType.Elem()
+	}
+
+	if goType.Kind() != reflect.Struct {
+		return false
+	}
+
+	for i := 0; i < goType.NumField(); i++ {
+		field := goType.Field(i)
+		tag := field.Tag.Get("json")
+
+		// Handle anonymous (embedded) struct fields: they promote their fields
+		// to the same JSON level, so recurse with the same jsonMap.
+		if field.Anonymous && (tag == "" || tag == "-") {
+			embeddedType := field.Type
+			for embeddedType.Kind() == reflect.Ptr {
+				embeddedType = embeddedType.Elem()
+			}
+			if embeddedType.Kind() == reflect.Struct {
+				if fixTypedPrimitivesRecursive(jsonMap, embeddedType, log) {
+					modified = true
+				}
+			}
+			continue
+		}
+
+		if tag == "" || tag == "-" {
+			continue
+		}
+		tag = strings.Split(tag, ",")[0]
+
+		jsonValue, exists := jsonMap[tag]
+		if !exists {
+			continue
+		}
+
+		fieldType := field.Type
+		for fieldType.Kind() == reflect.Ptr {
+			fieldType = fieldType.Elem()
+		}
+
+		switch fieldType.Kind() {
+		case reflect.Map:
+			if nestedMap, ok := jsonValue.(map[string]interface{}); ok {
+				mapValueType := fieldType.Elem()
+				for mapValueType.Kind() == reflect.Ptr {
+					mapValueType = mapValueType.Elem()
+				}
+
+				for _, mapVal := range nestedMap {
+					if mapValMap, ok := mapVal.(map[string]interface{}); ok {
+						if fixTypedPrimitivesRecursive(mapValMap, mapValueType, log) {
+							modified = true
+						}
+					}
+				}
+			}
+
+		case reflect.Struct:
+			if nestedMap, ok := jsonValue.(map[string]interface{}); ok {
+				if fixTypedPrimitivesRecursive(nestedMap, fieldType, log) {
+					modified = true
+				}
+			}
+
+		case reflect.String:
+			continue
+
+		default:
+			if strValue, isString := jsonValue.(string); isString {
+				convertedValue, err := convertEnvValueToType(strValue, fieldType)
+				if err != nil {
+					log.With("field", tag).With("value", strValue).With("expected_type", fieldType.String()).With("error", err).
+						Debug("could not convert string to expected type, keeping as string")
+					continue
+				}
+				jsonMap[tag] = convertedValue
+				modified = true
+			}
+		}
+	}
+
+	return modified
 }
 
 func fromJSONBytes(jsonBytes []byte, holder interface{}) error {

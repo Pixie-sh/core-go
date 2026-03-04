@@ -103,7 +103,7 @@ func (m DatabaseMigratorService) MigrateLoose(ctx context.Context, transactional
 		for _, migration := range migrations {
 			pixiecontext.GetCtxLogger(ctx).With("migration", migration).Debug("Starting Migration %s", migration.ID)
 
-			migrator, err := database.NewMigrator(ctx, &migratorConfig, m.db, migrations...)
+			migrator, err := database.NewMigrator(ctx, &migratorConfig, m.db, migration)
 			if err != nil {
 				return err
 			}

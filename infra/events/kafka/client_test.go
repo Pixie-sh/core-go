@@ -94,7 +94,6 @@ func TestDecodeBase64_EmptyInput(t *testing.T) {
 }
 
 func TestTLSConfig_Base64Fields(t *testing.T) {
-	// Verify the TLSConfig struct has the new base64 fields
 	cfg := TLSConfig{
 		Enabled:            true,
 		InsecureSkipVerify: true,
@@ -131,8 +130,10 @@ func TestBuildKgoOpts_Base64TLSCertificates(t *testing.T) {
 		},
 	}
 
-	// This should not panic and should build options successfully
-	opts := buildKgoOpts(cfg)
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 
 	// We should have at least the seed brokers, logger, client ID, and dialer options
 	if len(opts) < 3 {
@@ -141,7 +142,6 @@ func TestBuildKgoOpts_Base64TLSCertificates(t *testing.T) {
 }
 
 func TestBuildKgoOpts_Base64CACertificate(t *testing.T) {
-	// Generate a CA certificate (same as regular cert for testing)
 	certBase64, _, err := generateTestCertAndKey()
 	if err != nil {
 		t.Fatalf("failed to generate test CA certificate: %v", err)
@@ -153,19 +153,21 @@ func TestBuildKgoOpts_Base64CACertificate(t *testing.T) {
 		TLS: &TLSConfig{
 			Enabled:            true,
 			InsecureSkipVerify: false,
-			CABase64:           certBase64, // Use cert as CA for testing
+			CABase64:           certBase64,
 		},
 	}
 
-	// This should not panic
-	opts := buildKgoOpts(cfg)
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
 
 	if len(opts) < 3 {
 		t.Errorf("expected at least 3 options, got %d", len(opts))
 	}
 }
 
-func TestBuildKgoOpts_InvalidBase64CertFallsThrough(t *testing.T) {
+func TestBuildKgoOpts_InvalidBase64CertReturnsError(t *testing.T) {
 	cfg := &ClientConfiguration{
 		Brokers:  []string{"localhost:9092"},
 		ClientID: "test-client",
@@ -177,12 +179,136 @@ func TestBuildKgoOpts_InvalidBase64CertFallsThrough(t *testing.T) {
 		},
 	}
 
-	// Should not panic even with invalid base64 (silent error handling pattern)
-	opts := buildKgoOpts(cfg)
+	_, err := buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid base64 cert, got nil")
+	}
 
-	// Should still have basic options
-	if len(opts) < 3 {
-		t.Errorf("expected at least 3 options, got %d", len(opts))
+	if !containsString(err.Error(), "TLS certificate base64") {
+		t.Errorf("expected error about TLS certificate base64, got: %v", err)
+	}
+}
+
+func TestBuildKgoOpts_InvalidBase64KeyReturnsError(t *testing.T) {
+	certBase64, _, err := generateTestCertAndKey()
+	if err != nil {
+		t.Fatalf("failed to generate test certificates: %v", err)
+	}
+
+	cfg := &ClientConfiguration{
+		Brokers:  []string{"localhost:9092"},
+		ClientID: "test-client",
+		TLS: &TLSConfig{
+			Enabled:            true,
+			InsecureSkipVerify: true,
+			CertBase64:         certBase64,
+			KeyBase64:          "invalid-base64!!!",
+		},
+	}
+
+	_, err = buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid base64 key, got nil")
+	}
+
+	if !containsString(err.Error(), "TLS key base64") {
+		t.Errorf("expected error about TLS key base64, got: %v", err)
+	}
+}
+
+func TestBuildKgoOpts_InvalidCertKeyPairReturnsError(t *testing.T) {
+	// Generate two separate cert/key pairs - cross them to create a mismatch
+	certBase64, _, err := generateTestCertAndKey()
+	if err != nil {
+		t.Fatalf("failed to generate test certificates: %v", err)
+	}
+	_, keyBase64, err := generateTestCertAndKey()
+	if err != nil {
+		t.Fatalf("failed to generate second test certificates: %v", err)
+	}
+
+	cfg := &ClientConfiguration{
+		Brokers:  []string{"localhost:9092"},
+		ClientID: "test-client",
+		TLS: &TLSConfig{
+			Enabled:            true,
+			InsecureSkipVerify: true,
+			CertBase64:         certBase64,
+			KeyBase64:          keyBase64, // mismatched key
+		},
+	}
+
+	_, err = buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for mismatched cert/key pair, got nil")
+	}
+
+	if !containsString(err.Error(), "certificate/key pair") {
+		t.Errorf("expected error about certificate/key pair, got: %v", err)
+	}
+}
+
+func TestBuildKgoOpts_InvalidCertFileReturnsError(t *testing.T) {
+	cfg := &ClientConfiguration{
+		Brokers:  []string{"localhost:9092"},
+		ClientID: "test-client",
+		TLS: &TLSConfig{
+			Enabled:            true,
+			InsecureSkipVerify: true,
+			CertFile:           "/nonexistent/cert.pem",
+			KeyFile:            "/nonexistent/key.pem",
+		},
+	}
+
+	_, err := buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for nonexistent cert files, got nil")
+	}
+
+	if !containsString(err.Error(), "certificate/key files") {
+		t.Errorf("expected error about certificate/key files, got: %v", err)
+	}
+}
+
+func TestBuildKgoOpts_InvalidCABase64ReturnsError(t *testing.T) {
+	cfg := &ClientConfiguration{
+		Brokers:  []string{"localhost:9092"},
+		ClientID: "test-client",
+		TLS: &TLSConfig{
+			Enabled:            true,
+			InsecureSkipVerify: false,
+			CABase64:           "invalid-base64!!!",
+		},
+	}
+
+	_, err := buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid CA base64, got nil")
+	}
+
+	if !containsString(err.Error(), "CA certificate base64") {
+		t.Errorf("expected error about CA certificate base64, got: %v", err)
+	}
+}
+
+func TestBuildKgoOpts_InvalidCAFileReturnsError(t *testing.T) {
+	cfg := &ClientConfiguration{
+		Brokers:  []string{"localhost:9092"},
+		ClientID: "test-client",
+		TLS: &TLSConfig{
+			Enabled:            true,
+			InsecureSkipVerify: false,
+			CAFile:             "/nonexistent/ca.pem",
+		},
+	}
+
+	_, err := buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for nonexistent CA file, got nil")
+	}
+
+	if !containsString(err.Error(), "CA certificate file") {
+		t.Errorf("expected error about CA certificate file, got: %v", err)
 	}
 }
 
@@ -206,8 +332,10 @@ func TestBuildKgoOpts_Base64TakesPrecedenceOverFiles(t *testing.T) {
 		},
 	}
 
-	// Should not panic - base64 certificates should be used, files ignored
-	opts := buildKgoOpts(cfg)
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		t.Fatalf("expected no error (base64 should be used, files ignored), got: %v", err)
+	}
 
 	if len(opts) < 3 {
 		t.Errorf("expected at least 3 options, got %d", len(opts))
@@ -221,68 +349,17 @@ func TestBuildKgoOpts_EmptyBase64FallsBackToFiles(t *testing.T) {
 		TLS: &TLSConfig{
 			Enabled:            true,
 			InsecureSkipVerify: true,
-			// Only file paths provided (empty base64 fields)
-			CertFile:   "/nonexistent/cert.pem",
-			KeyFile:    "/nonexistent/key.pem",
-			CertBase64: "",
-			KeyBase64:  "",
+			CertFile:           "/nonexistent/cert.pem",
+			KeyFile:            "/nonexistent/key.pem",
+			CertBase64:         "",
+			KeyBase64:          "",
 		},
 	}
 
-	// Should not panic - will try file paths (which don't exist, but follows silent error pattern)
-	opts := buildKgoOpts(cfg)
-
-	if len(opts) < 3 {
-		t.Errorf("expected at least 3 options, got %d", len(opts))
-	}
-}
-
-func TestBuildKgoOpts_MixedConfig_Base64CertAndFileCA(t *testing.T) {
-	certBase64, keyBase64, err := generateTestCertAndKey()
-	if err != nil {
-		t.Fatalf("failed to generate test certificates: %v", err)
-	}
-
-	cfg := &ClientConfiguration{
-		Brokers:  []string{"localhost:9092"},
-		ClientID: "test-client",
-		TLS: &TLSConfig{
-			Enabled:            true,
-			InsecureSkipVerify: true,
-			// Base64 for cert/key, file for CA
-			CertBase64: certBase64,
-			KeyBase64:  keyBase64,
-			CAFile:     "/nonexistent/ca.pem",
-		},
-	}
-
-	// Should not panic - mixed configuration should work
-	opts := buildKgoOpts(cfg)
-
-	if len(opts) < 3 {
-		t.Errorf("expected at least 3 options, got %d", len(opts))
-	}
-}
-
-func TestBuildKgoOpts_BackwardCompatibility_NoBase64Fields(t *testing.T) {
-	cfg := &ClientConfiguration{
-		Brokers:  []string{"localhost:9092"},
-		ClientID: "test-client",
-		TLS: &TLSConfig{
-			Enabled:            true,
-			InsecureSkipVerify: true,
-			// Only file paths - original behavior
-			CertFile: "/nonexistent/cert.pem",
-			KeyFile:  "/nonexistent/key.pem",
-			CAFile:   "/nonexistent/ca.pem",
-		},
-	}
-
-	// Should not panic - backward compatible with file-only configuration
-	opts := buildKgoOpts(cfg)
-
-	if len(opts) < 3 {
-		t.Errorf("expected at least 3 options, got %d", len(opts))
+	// Now returns error for nonexistent files instead of silently ignoring
+	_, err := buildKgoOpts(cfg)
+	if err == nil {
+		t.Fatal("expected error for nonexistent cert files, got nil")
 	}
 }
 
@@ -297,8 +374,10 @@ func TestBuildKgoOpts_TLSDisabled(t *testing.T) {
 		},
 	}
 
-	// Should not add TLS dialer when disabled
-	opts := buildKgoOpts(cfg)
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		t.Fatalf("expected no error when TLS disabled, got: %v", err)
+	}
 
 	// Without TLS, should have fewer options (no dialer)
 	// Just brokers, logger, and client ID = 3
@@ -314,11 +393,35 @@ func TestBuildKgoOpts_NilTLSConfig(t *testing.T) {
 		TLS:      nil,
 	}
 
-	// Should not panic with nil TLS config
-	opts := buildKgoOpts(cfg)
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		t.Fatalf("expected no error when TLS nil, got: %v", err)
+	}
 
 	if len(opts) != 3 {
 		t.Errorf("expected 3 options when TLS nil, got %d", len(opts))
+	}
+}
+
+func TestBuildKgoOpts_NoCertConfigWithTLSEnabled(t *testing.T) {
+	cfg := &ClientConfiguration{
+		Brokers:  []string{"localhost:9092"},
+		ClientID: "test-client",
+		TLS: &TLSConfig{
+			Enabled:            true,
+			InsecureSkipVerify: true,
+			// No cert/key configured - valid for server-only TLS
+		},
+	}
+
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		t.Fatalf("expected no error when TLS enabled without client certs, got: %v", err)
+	}
+
+	// Should have brokers, logger, client ID, and dialer = 4
+	if len(opts) < 4 {
+		t.Errorf("expected at least 4 options with TLS dialer, got %d", len(opts))
 	}
 }
 
@@ -337,6 +440,33 @@ func TestClient_GetTopics_NilClient(t *testing.T) {
 	expectedMsg := "kafka client is nil"
 	if err.Error() != expectedMsg {
 		t.Errorf("expected error message %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+func TestClient_Ping_NilClient(t *testing.T) {
+	client := &Client{
+		kgoClient: nil,
+		cfg:       nil,
+	}
+
+	ctx := context.Background()
+	err := client.Ping(ctx)
+	if err == nil {
+		t.Fatal("expected error when kgoClient is nil")
+	}
+
+	expectedMsg := "kafka client is nil"
+	if err.Error() != expectedMsg {
+		t.Errorf("expected error message %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+func TestClientConfiguration_ConnectTimeout_Default(t *testing.T) {
+	cfg := &ClientConfiguration{}
+
+	timeout := cfg.connectTimeout()
+	if timeout != DefaultConnectTimeout {
+		t.Errorf("expected default timeout %v, got %v", DefaultConnectTimeout, timeout)
 	}
 }
 
@@ -379,7 +509,6 @@ func TestValidateTopicsExist_NoTopicsConfigured(t *testing.T) {
 }
 
 func TestValidateTopicsExist_EmptyTopicNames(t *testing.T) {
-	// Simulates unresolved environment variables
 	configured := []string{"", ""}
 	existing := []string{"topic-a", "topic-b"}
 
@@ -394,7 +523,6 @@ func TestValidateTopicsExist_EmptyTopicNames(t *testing.T) {
 }
 
 func TestValidateTopicsExist_MixedEmptyAndValid(t *testing.T) {
-	// One valid, one empty (unresolved env var)
 	configured := []string{"", "topic-a"}
 	existing := []string{"topic-a", "topic-b"}
 
@@ -405,7 +533,6 @@ func TestValidateTopicsExist_MixedEmptyAndValid(t *testing.T) {
 }
 
 func TestValidateTopicsExist_MixedEmptyAndMissing(t *testing.T) {
-	// One empty, one missing
 	configured := []string{"", "topic-missing"}
 	existing := []string{"topic-a", "topic-b"}
 

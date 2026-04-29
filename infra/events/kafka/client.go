@@ -19,6 +19,9 @@ import (
 	coretime "github.com/pixie-sh/core-go/pkg/time"
 )
 
+// DefaultConnectTimeout is the default timeout for eager broker connectivity checks at startup.
+const DefaultConnectTimeout = 30 * time.Second
+
 // ClientConfiguration holds the configuration for the Kafka client
 type ClientConfiguration struct {
 	Brokers        []string          `json:"brokers"`
@@ -27,7 +30,16 @@ type ClientConfiguration struct {
 	TLS            *TLSConfig        `json:"tls,omitempty"`
 	RetryBackoff   coretime.Duration `json:"retry_backoff"`
 	RequestTimeout coretime.Duration `json:"request_timeout"`
-	Compression    string            `json:"compression"` // "none", "gzip", "snappy", "lz4", "zstd"
+	ConnectTimeout coretime.Duration `json:"connect_timeout"` // timeout for startup connectivity checks; default 30s
+	Compression    string            `json:"compression"`     // "none", "gzip", "snappy", "lz4", "zstd"
+}
+
+// connectTimeout returns the configured connect timeout or the default.
+func (c *ClientConfiguration) connectTimeout() time.Duration {
+	if c.ConnectTimeout > 0 {
+		return c.ConnectTimeout.Duration()
+	}
+	return DefaultConnectTimeout
 }
 
 type SASLConfig struct {
@@ -55,7 +67,10 @@ type Client struct {
 
 // NewClient creates a new Kafka client with the given configuration
 func NewClient(_ context.Context, cfg *ClientConfiguration) (*Client, error) {
-	opts := buildKgoOpts(cfg)
+	opts, err := buildKgoOpts(cfg)
+	if err != nil {
+		return nil, errors.New("failed to build kafka client options: %w", err)
+	}
 
 	kgoClient, err := kgo.NewClient(opts...)
 	if err != nil {
@@ -73,6 +88,15 @@ func (c *Client) Close() {
 	if c.kgoClient != nil {
 		c.kgoClient.Close()
 	}
+}
+
+// Ping checks connectivity to the Kafka cluster by issuing a lightweight request.
+// Useful for health/readiness probes to detect runtime broker unavailability.
+func (c *Client) Ping(ctx context.Context) error {
+	if c.kgoClient == nil {
+		return errors.New("kafka client is nil")
+	}
+	return c.kgoClient.Ping(ctx)
 }
 
 // GetTopics fetches the list of topics from the Kafka cluster.
@@ -168,8 +192,9 @@ func validateTopicsExist(configuredTopics []string, existingTopics []string) err
 	return nil
 }
 
-// buildKgoOpts builds the kgo options from the configuration
-func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
+// buildKgoOpts builds the kgo options from the configuration.
+// Returns an error if TLS is enabled and certificate configuration is invalid.
+func buildKgoOpts(cfg *ClientConfiguration) ([]kgo.Opt, error) {
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(cfg.Brokers...),
 		kgo.WithLogger(kgo.BasicLogger(os.Stderr, kgo.LogLevelWarn, nil)),
@@ -234,48 +259,54 @@ func buildKgoOpts(cfg *ClientConfiguration) []kgo.Opt {
 
 		// Load client certificates - base64 takes precedence over file paths
 		if cfg.TLS.CertBase64 != "" && cfg.TLS.KeyBase64 != "" {
-			// Decode base64-encoded certificate and key
 			certPEM, err := decodeBase64(cfg.TLS.CertBase64)
-			if err == nil {
-				keyPEM, err := decodeBase64(cfg.TLS.KeyBase64)
-				if err == nil {
-					cert, err := tls.X509KeyPair(certPEM, keyPEM)
-					if err == nil {
-						tlsConfig.Certificates = []tls.Certificate{cert}
-					}
-				}
+			if err != nil {
+				return nil, errors.New("failed to decode TLS certificate base64: %w", err)
 			}
+			keyPEM, err := decodeBase64(cfg.TLS.KeyBase64)
+			if err != nil {
+				return nil, errors.New("failed to decode TLS key base64: %w", err)
+			}
+			cert, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				return nil, errors.New("failed to parse TLS certificate/key pair: %w", err)
+			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
 		} else if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
-			// Fall back to file-based certificates
 			cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-			if err == nil {
-				tlsConfig.Certificates = []tls.Certificate{cert}
+			if err != nil {
+				return nil, errors.New("failed to load TLS certificate/key files: %w", err)
 			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
 		}
 
 		// Load CA certificate - base64 takes precedence over file paths
 		if !cfg.TLS.InsecureSkipVerify {
 			if cfg.TLS.CABase64 != "" {
-				// Decode base64-encoded CA certificate
 				caCertPEM, err := decodeBase64(cfg.TLS.CABase64)
-				if err == nil {
-					caCertPool := x509.NewCertPool()
-					caCertPool.AppendCertsFromPEM(caCertPEM)
-					tlsConfig.RootCAs = caCertPool
+				if err != nil {
+					return nil, errors.New("failed to decode CA certificate base64: %w", err)
 				}
+				caCertPool := x509.NewCertPool()
+				if !caCertPool.AppendCertsFromPEM(caCertPEM) {
+					return nil, errors.New("failed to parse CA certificate PEM")
+				}
+				tlsConfig.RootCAs = caCertPool
 			} else if cfg.TLS.CAFile != "" {
-				// Fall back to file-based CA certificate
 				caCert, err := os.ReadFile(cfg.TLS.CAFile)
-				if err == nil {
-					caCertPool := x509.NewCertPool()
-					caCertPool.AppendCertsFromPEM(caCert)
-					tlsConfig.RootCAs = caCertPool
+				if err != nil {
+					return nil, errors.New("failed to read CA certificate file: %w", err)
 				}
+				caCertPool := x509.NewCertPool()
+				if !caCertPool.AppendCertsFromPEM(caCert) {
+					return nil, errors.New("failed to parse CA certificate from file %s", cfg.TLS.CAFile)
+				}
+				tlsConfig.RootCAs = caCertPool
 			}
 		}
 
 		opts = append(opts, kgo.Dialer((&tls.Dialer{Config: tlsConfig}).DialContext))
 	}
 
-	return opts
+	return opts, nil
 }

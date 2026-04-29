@@ -31,9 +31,13 @@ type Producer struct {
 }
 
 func NewProducer(ctx context.Context, client *Client, cfg *ProducerConfiguration) (*Producer, error) {
-	// Eagerly verify connection to Kafka brokers at startup.
-	// This prevents lazy connection failures that would only manifest later during production.
-	existingTopics, err := client.GetTopics(ctx)
+	// Eagerly verify connection to Kafka brokers at startup with a bounded timeout.
+	// This prevents lazy connection failures that would only manifest later during production,
+	// and avoids indefinite hangs on DNS resolution failures.
+	connectCtx, cancel := context.WithTimeout(ctx, client.cfg.connectTimeout())
+	defer cancel()
+
+	existingTopics, err := client.GetTopics(connectCtx)
 	if err != nil {
 		return nil, errors.New("failed to connect to kafka brokers: %w", err)
 	}

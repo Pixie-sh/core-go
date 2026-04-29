@@ -57,7 +57,11 @@ func NewConsumer(ctx context.Context, client *Client, cfg *ConsumerConfiguration
 	}
 
 	// Create a new client for consuming (separate from producer client)
-	consumerClient, err := kgo.NewClient(append(buildKgoOpts(client.cfg), opts...)...)
+	baseOpts, err := buildKgoOpts(client.cfg)
+	if err != nil {
+		return nil, errors.New("failed to build kafka consumer options: %w", err)
+	}
+	consumerClient, err := kgo.NewClient(append(baseOpts, opts...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,9 +70,13 @@ func NewConsumer(ctx context.Context, client *Client, cfg *ConsumerConfiguration
 	client.kgoClient.Close()
 	client.kgoClient = consumerClient
 
-	// Eagerly verify connection to Kafka brokers at startup.
-	// This prevents lazy connection failures that would only manifest later during consumption.
-	existingTopics, err := client.GetTopics(ctx)
+	// Eagerly verify connection to Kafka brokers at startup with a bounded timeout.
+	// This prevents lazy connection failures that would only manifest later during consumption,
+	// and avoids indefinite hangs on DNS resolution failures.
+	connectCtx, cancel := context.WithTimeout(ctx, client.cfg.connectTimeout())
+	defer cancel()
+
+	existingTopics, err := client.GetTopics(connectCtx)
 	if err != nil {
 		client.kgoClient.Close()
 		return nil, errors.New("failed to connect to kafka brokers: %w", err)

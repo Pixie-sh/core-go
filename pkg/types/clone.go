@@ -1,30 +1,18 @@
 package types
 
 import (
-	clone "github.com/huandu/go-clone/generic"
+	"github.com/pixie-sh/clone-go"
 )
 
-// Cloneable defines the interface for types that can be cloned.
-type Cloneable[T any] interface {
-	// Clone creates a deep copy of the object.
-	Clone() *T
-}
+// Cloneable is a type alias for clone.Cloneable[T] preserved for backward
+// compatibility with downstream code that imports it as types.Cloneable[T].
+// Because this is a Go 1.24 generic type alias (not a fresh interface
+// definition), implementations of types.Cloneable[T] satisfy
+// clone.Cloneable[T] for the dispatch check inside clone.Clone.
+type Cloneable[T any] = clone.Cloneable[T]
 
-// Clone creates a deep copy of the object passed as argument.
-// Only works for types that are json serializable, and all fields must be exported.
-func Clone[T any](o *T) *T {
-	// check if o implements the Cloneable interface
-	// if it does, call its Clone method
-	if c, ok := (interface{})(o).(Cloneable[T]); ok {
-		return c.Clone()
-	}
+// Clone delegates to clone.Clone. See github.com/pixie-sh/clone-go.
+func Clone[T any](o *T) *T { return clone.Clone(o) }
 
-	return clone.Clone(o)
-}
-
-// CloneSlowly creates a deep copy of the object passed as argument.
-// Only works for types that are json serializable, and all fields must be exported.
-// Use this function when the object has pointers to itself.
-func CloneSlowly[T any](o *T) *T {
-	return clone.Slowly(o)
-}
+// CloneSlowly delegates to clone.CloneSlowly. See github.com/pixie-sh/clone-go.
+func CloneSlowly[T any](o *T) *T { return clone.CloneSlowly(o) }

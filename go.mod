@@ -1,6 +1,6 @@
 module github.com/pixie-sh/core-go
 
-go 1.24.4
+go 1.25.1
 
 require (
 	github.com/BurntSushi/toml v1.5.0
@@ -23,12 +23,12 @@ require (
 	github.com/gofiber/contrib/otelfiber/v2 v2.2.3
 	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/google/open-location-code/go v0.0.0-20250620134813-83986da0156b
-	github.com/huandu/go-clone/generic v1.7.3
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mmcloughlin/geohash v0.10.0
+	github.com/pixie-sh/clone-go v0.1.0
 	github.com/pixie-sh/database-helpers-go v0.2.16
 	github.com/pixie-sh/di-go v0.2.1
 	github.com/pixie-sh/errors-go v0.3.7
@@ -83,7 +83,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/huandu/go-clone v1.7.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/pgx/v5 v5.4.3 // indirect
@@ -127,3 +126,4 @@ require (
 	gorm.io/driver/postgres v1.5.7 // indirect
 	gorm.io/plugin/dbresolver v1.6.0 // indirect
 )
+

@@ -18,3 +18,13 @@ test.cover
 /.claude
 /.claude/settings.local.json
 /.claude/commands
+/.env.example
+/.nvmrc
+/tui.json
+/.mcp.json
+/.codex
+/GEMINI.md
+/.agents
+/.gemini
+# CocoIndex Code (ccc)
+/.cocoindex_code/

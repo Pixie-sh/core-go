@@ -17,6 +17,8 @@ import (
 	"github.com/pixie-sh/core-go/pkg/types"
 )
 
+var configurationLookupErrorCode = errors.NewErrorCode("ConfigurationLoadErrorCode", 90503)
+
 // Regular expression to match both quoted and unquoted ${shared.path.to.node} and ${#ref.path.to.node} patterns
 // This will match: "session_cache": ${#ref.singleton} or "session_cache": "${#ref.singleton}"
 var sharedBlocks = regexp.MustCompile(`["']?(\$\{(#ref\.[^}]+)\})["']?`)
@@ -26,6 +28,13 @@ var sharedBlocks = regexp.MustCompile(`["']?(\$\{(#ref\.[^}]+)\})["']?`)
 // - ${env.MY_VAR} - standard environment variable reference
 // - ${#env.MY_VAR} - environment variable reference with # prefix
 var envRegex = regexp.MustCompile(`\$\{(#?)env\.([A-Za-z0-9_.]+)\}`)
+
+// Regular expression to match quoted ${env.json.VAR_NAME} placeholders. These
+// placeholders are replaced with the environment variable value as a raw JSON
+// node, so they must occupy the full JSON string value.
+var envJSONRegex = regexp.MustCompile(`"\$\{env\.json\.([A-Za-z0-9_.]+)\}"`)
+
+var envJSONTokenRegex = regexp.MustCompile(`\$\{env\.json\.([A-Za-z0-9_.]+)\}`)
 
 // Pattern to match quoted JSON objects or arrays
 // This matches: "{"key":"value"}" or "[1,2,3]"
@@ -93,7 +102,13 @@ func StructFromTOMLBytesWithEnvReplace(fileContent []byte, holder interface{}, l
 // looking for the default pattern ${#ref.YYYYY}
 // and prioritize environment variables over JSON values for expected struct tags
 func StructFromJSONBytesWithEnvReplace(fileContent []byte, holder interface{}, log logger.Interface) ([]byte, error) {
-	modifiedContent := replaceEnvVarsInContent(fileContent, log)
+	modifiedContent, err := replaceJSONEnvVarsInContent(fileContent, log)
+	if err != nil {
+		log.With("raw_with_error", fileContent).Error("error replacing json env vars")
+		return nil, errors.Wrap(err, "error replacing json env vars", configurationLookupErrorCode)
+	}
+
+	modifiedContent = replaceEnvVarsInContent(modifiedContent, log)
 	modifiedContent = fixQuotedJSONObjects(types.UnsafeString(modifiedContent))
 
 	replacedJson, err := replaceRefBlocks(types.UnsafeString(modifiedContent), log)
@@ -313,6 +328,44 @@ func replaceEnvVarsInContent(content []byte, log logger.Interface) []byte {
 	return result
 }
 
+func replaceJSONEnvVarsInContent(content []byte, log logger.Interface) ([]byte, error) {
+	result := envJSONRegex.ReplaceAllFunc(content, func(match []byte) []byte {
+		submatches := envJSONRegex.FindSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+		}
+
+		envVarName := types.UnsafeString(submatches[1])
+		envVal := os.Getenv(envVarName)
+		if len(envVal) == 0 {
+			return match
+		}
+
+		return types.UnsafeBytes(sanitizeJSONString(envVal))
+	})
+
+	if match := envJSONTokenRegex.Find(result); match != nil {
+		submatches := envJSONTokenRegex.FindSubmatch(match)
+		envVarName := "unknown"
+		if len(submatches) >= 2 {
+			envVarName = types.UnsafeString(submatches[1])
+		}
+
+		envVal := os.Getenv(envVarName)
+		if len(envVal) == 0 {
+			return nil, errors.New("environment variable %s for json placeholder is not set", envVarName)
+		}
+
+		if !isValidJSON(envVal) {
+			return nil, errors.New("environment variable %s for json placeholder is not valid JSON", envVarName)
+		}
+
+		return nil, errors.New("json environment placeholder %s must occupy the full JSON string value", types.UnsafeString(match))
+	}
+
+	return result, nil
+}
+
 // sanitizeJSONString sanitizes JSON strings from environment variables by removing unnecessary whitespace
 func sanitizeJSONString(jsonStr string) string {
 	// First, try to parse the JSON to validate it
@@ -489,6 +542,18 @@ func replaceRefBlocks(validJSON string, log logger.Interface) (string, error) {
 
 		log.With("ref_block", fullMatch).With("path", sharedPath).Debug("resolving ref block")
 
+		if strings.HasPrefix(sharedPath, "#ref.jsonfiles.") {
+			envVarName := strings.TrimPrefix(sharedPath, "#ref.jsonfiles.")
+			compact, err := resolveJsonfilesRef(envVarName)
+			if err != nil {
+				log.With("ref_block", fullMatch).With("env_var", envVarName).With("error", err).Error("failed to resolve jsonfiles ref")
+				return "", err
+			}
+			replacements[fullMatch] = compact
+			log.With("ref_block", fullMatch).Debug("successfully resolved jsonfiles ref")
+			continue
+		}
+
 		referencedNode, err := nodeFromJson(rawData, sharedPath)
 		if err != nil {
 			log.With("ref_block", fullMatch).With("path", sharedPath).With("error", err).Error("failed to resolve ref block")
@@ -516,6 +581,40 @@ func replaceRefBlocks(validJSON string, log logger.Interface) (string, error) {
 
 	log.With("replacements_count", len(replacements)).Debug("completed ref block replacements")
 	return result, nil
+}
+
+// resolveJsonfilesRef resolves a ${#ref.jsonfiles.<ENV>} placeholder by reading
+// the env var, treating its value as a filesystem path, reading that file, and
+// returning its content as compact JSON. Returns an error if the env var is
+// unset, the file cannot be read, or the file content is not valid JSON.
+func resolveJsonfilesRef(envVarName string) (string, error) {
+	filePath := os.Getenv(envVarName)
+	if filePath == "" {
+		return "", errors.New("jsonfiles env var %s is not set", envVarName, configurationLookupErrorCode)
+	}
+
+	fileContent, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", errors.New("jsonfiles %s: failed to read file at %s: %s", envVarName, filePath, err.Error(), configurationLookupErrorCode)
+	}
+
+	if !isValidJSON(types.UnsafeString(fileContent)) {
+		return "", errors.New("jsonfiles %s: file at %s is not valid JSON", envVarName, filePath, configurationLookupErrorCode)
+	}
+
+	var parsed interface{}
+	if err := gojson.Unmarshal(fileContent, &parsed); err != nil {
+		return "", errors.New("jsonfiles %s: failed to parse JSON from %s: %s", envVarName, filePath, err.Error(), configurationLookupErrorCode)
+	}
+
+	var buf bytes.Buffer
+	encoder := gojson.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(parsed); err != nil {
+		return "", errors.New("jsonfiles %s: failed to encode compacted JSON from %s: %s", envVarName, filePath, err.Error(), configurationLookupErrorCode)
+	}
+
+	return strings.TrimSuffix(buf.String(), "\n"), nil
 }
 
 func nodeFromJson(data map[string]interface{}, path string) (interface{}, error) {

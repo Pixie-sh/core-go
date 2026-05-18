@@ -76,59 +76,69 @@ func Setup(cfg interface{}, ignoreArgs bool, withValidations ...bool) {
 	}
 
 	if len(configFiles) > 1 && !loaded {
-		var cfgsToMerge [][]byte
+		// Multi-file mode: merge raw JSON first, then resolve envs/refs once on
+		// the merged document. Per-file resolution would substitute the base's
+		// ${#ref.X} placeholders against the base's own #ref table before
+		// overlays could contribute alternate #ref.X blocks via merge.
+		rawConfigs := make([][]byte, 0, len(configFiles))
 		for _, file := range configFiles {
-			_, err = StructFromFileWithEnvReplace(file, cfg, log)
-			if err != nil {
-				log.Error("unable to load config from file (%s) error (%s) \n", file, err.Error())
+			if !strings.HasSuffix(file, ".json") {
+				log.With("file", file).Error("multi-file CONFIG_FILES only supports .json overlays")
 				os.Exit(1)
 			}
-			blob, _ := gojson.Marshal(cfg)
-			cfgsToMerge = append(cfgsToMerge, blob)
-		}
 
-		if len(cfgsToMerge) != 0 {
-			var remaining [][]byte
-			baseCfg := cfgsToMerge[0]
-			if len(cfgsToMerge) > 1 {
-				remaining = cfgsToMerge[1:]
+			raw, readErr := os.ReadFile(file)
+			if readErr != nil {
+				log.With("error", readErr).Error("unable to read config from file (%s) error (%s) \n", file, readErr.Error())
+				os.Exit(1)
 			}
 
-			for _, bytes := range remaining {
-				patchFromCompare, err := jsondiff.CompareJSON(baseCfg, bytes)
-				if err != nil {
-					errors.Must(err)
-				}
-
-				// ignore removals, our configs are incremental and not complete
-				var patch []jsondiff.Operation
-				for idx := range patchFromCompare {
-					if patchFromCompare[idx].Type == jsondiff.OperationRemove {
-						continue
-					}
-					patch = append(patch, patchFromCompare[idx])
-				}
-
-				rawPatch, _ := gojson.Marshal(patch)
-				patchOper, err := jsonpatch.DecodePatch(rawPatch)
-				if err != nil {
-					errors.Must(err)
-				}
-
-				newCfg, err := patchOper.Apply(baseCfg)
-				if err != nil {
-					errors.Must(err)
-				}
-
-				baseCfg = newCfg
+			if !isValidJSON(string(raw)) {
+				log.Error("config file (%s) is not valid JSON", file)
+				os.Exit(1)
 			}
 
-			err := gojson.Unmarshal(baseCfg, cfg)
-			errors.Must(err)
-
-			jsonBlob = baseCfg
-			loaded = true
+			rawConfigs = append(rawConfigs, raw)
 		}
+
+		merged := rawConfigs[0]
+		for _, overlay := range rawConfigs[1:] {
+			patchFromCompare, cmpErr := jsondiff.CompareJSON(merged, overlay)
+			if cmpErr != nil {
+				errors.Must(cmpErr)
+			}
+
+			// ignore removals, overlays are incremental and not complete
+			var patch []jsondiff.Operation
+			for idx := range patchFromCompare {
+				if patchFromCompare[idx].Type == jsondiff.OperationRemove {
+					continue
+				}
+				patch = append(patch, patchFromCompare[idx])
+			}
+
+			rawPatch, _ := gojson.Marshal(patch)
+			patchOper, decErr := jsonpatch.DecodePatch(rawPatch)
+			if decErr != nil {
+				errors.Must(decErr)
+			}
+
+			next, applyErr := patchOper.Apply(merged)
+			if applyErr != nil {
+				errors.Must(applyErr)
+			}
+
+			merged = next
+		}
+
+		resolved, resolveErr := StructFromJSONBytesWithEnvReplace(merged, cfg, log)
+		if resolveErr != nil {
+			log.With("error", resolveErr).Error("unable to resolve merged config: %s", resolveErr.Error())
+			os.Exit(1)
+		}
+
+		jsonBlob = resolved
+		loaded = true
 	}
 
 	if !loaded {

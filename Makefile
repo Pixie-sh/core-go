@@ -67,9 +67,12 @@ lint-fix:
 	golangci-lint run --fix --timeout 6m
 
 local-test:
-	@echo "=== Start local services ==="
-	docker compose up -d
-	$(MAKE) test; docker compose down
+	$(MAKE) test
+
+e2e-test:
+	@echo "=== Start e2e services ==="
+	docker compose -f e2e_tests/dockerfiles/docker-compose.yaml up -d
+	go test -tags=e2e -count=1 -v ./e2e_tests/...; status=$$?; docker compose -f e2e_tests/dockerfiles/docker-compose.yaml down; exit $$status
 
 # no mocks available yet
 test: ensure-deps# mocks

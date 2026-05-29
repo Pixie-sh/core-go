@@ -164,6 +164,9 @@ func timeToStringHook(f reflect.Type, t reflect.Type, data interface{}) (interfa
 }
 
 func SerializeTimeToMap(t *time.Time) map[string]string {
+	if t == nil {
+		return nil
+	}
 	return map[string]string{
 		"RFC3339": t.UTC().Format(time.RFC3339),
 	}

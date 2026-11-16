@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="The core libraries behind Pixie&#x27;s Go services: configuration, HTTP and Lambda entry points, events, caching, rate limiting, state machines and typed helpers.">
+<title>core-go</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;800&display=swap">
+<style>
+/* Layout: pixie.sh's look — black ground, white Inter, and the red/green/blue channel offset
+   on headings, labels and card edges. Single dark theme by design. */
+:root {
+  --bg: #0a0a0a;
+  --black: #000;
+  --raise: #1a1a1a;
+  --ink: #fff;
+  --muted: #b9b9b9;
+  --line: #2a2a2a;
+  --r: #e52320;
+  --g: #00ff00;
+  --b: #0000ff;
+  --g-soft: rgba(0, 255, 0, 0.1);
+  --g-line: rgba(0, 255, 0, 0.3);
+  --body: Inter, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --split: -2px -1.2px 0 var(--r), -2.5px -0.6px 0 var(--g);
+  --edges: -3px 3px 0 var(--r), -1.5px -1.5px 0 var(--b), 2px -2px 0 var(--g);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.6 var(--body); }
+.wrap {
+  max-width: 68rem; margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+a { color: inherit; text-decoration-color: var(--g); text-underline-offset: 0.2em; transition: color 0.3s ease, text-shadow 0.3s ease; }
+a:hover { color: var(--g); text-shadow: -2px -0.1px 0 var(--b), -3px -0.1px 0 var(--r); }
+:focus-visible { outline: 2px solid var(--g); outline-offset: 3px; }
+code, pre, .mono { font-family: var(--mono); }
+p code, li code, td code { font-size: 0.88em; color: var(--g); background: var(--g-soft); padding: 0.08em 0.35em; border-radius: 3px; }
+h1, h2, h3 { font-family: var(--body); text-wrap: balance; margin: 0; }
+p { margin: 0; max-width: 62ch; }
+
+/* top bar */
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; padding-block: 1.25rem; }
+.top .name { font: 700 1rem var(--body); letter-spacing: -0.01em; text-shadow: var(--split); }
+.top nav { display: flex; gap: 1.5rem; font-size: 0.95rem; }
+.top nav a { text-decoration: none; }
+
+/* hero */
+.hero { padding-block: 3.5rem 4rem; display: flex; flex-direction: column; gap: 2rem; }
+h1 {
+  font-size: clamp(2.5rem, 7.4vw, 5.5rem); font-weight: 800; line-height: 1; letter-spacing: -0.04em; max-width: 14ch;
+  padding-left: 0.1em;
+  text-shadow: -0.06em 0.04em 0 var(--r), -0.06em -0.03em 0 var(--b), -0.08em -0.07em 0 var(--g);
+}
+h1 em { font-style: normal; }
+.lede { font-size: 1.25rem; font-weight: 300; line-height: 1.5; max-width: 54ch; }
+.cmd { display: flex; align-items: stretch; background: var(--black); color: var(--ink); max-width: 100%; width: fit-content; box-shadow: var(--edges); margin-left: 3px; }
+.cmd pre { margin: 0; padding: 0.9rem 1rem; overflow-x: auto; font-size: 0.9rem; min-width: 0; }
+.cmd pre::before { content: "$ "; color: var(--g); }
+.cmd button { font: 700 0.8rem var(--body); color: var(--g); background: var(--g-soft); border: 0; border-left: 2px solid var(--g); padding: 0 1.1rem; cursor: pointer; transition: background 0.2s ease; }
+.cmd button:hover { background: rgba(0, 255, 0, 0.2); }
+.fine { font-size: 0.92rem; color: var(--muted); }
+
+/* bands: the green rule with its blue echo, as on pixie.sh's track line */
+section { padding-block: 4rem; display: flex; flex-direction: column; gap: 2rem; position: relative; }
+section::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--g); box-shadow: -3px 2px 0 var(--b); }
+.label { font: 400 0.95rem var(--body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink); text-shadow: var(--split); }
+h2 { font-size: clamp(1.9rem, 4vw, 3rem); font-weight: 700; line-height: 1.08; letter-spacing: -0.03em; max-width: 22ch; }
+h3 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+.head { display: flex; flex-direction: column; gap: 0.85rem; }
+.head p { font-weight: 300; }
+
+/* before / after figure */
+.fig { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 2rem; padding-inline: 3px; }
+.panel { background: var(--black); box-shadow: var(--edges); padding: 1.35rem; display: flex; flex-direction: column; gap: 1.1rem; min-width: 0; }
+.panel h3 { font: 700 0.8rem var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.rows { display: grid; gap: 0.5rem; }
+.row { display: grid; grid-template-columns: 1fr 2.5rem 1fr; align-items: center; }
+.chip { font: 700 0.85rem var(--body); letter-spacing: 0.02em; border: 1px solid var(--line); background: var(--raise); padding: 0.55rem 0.7rem; min-width: 0; overflow-wrap: anywhere; }
+.chip.silo { border: 1px dashed var(--r); background: transparent; color: var(--muted); font-weight: 400; }
+.wire { height: 0; border-top: 1px dashed var(--muted); }
+.merge { display: grid; grid-template-columns: 1fr 2.5rem 1fr; align-items: stretch; }
+.merge .rows { align-content: center; }
+.merge .bus { border: 2px solid var(--g); border-left: 0; margin-block: 1.1rem; box-shadow: 2px 1px 0 var(--b); }
+.owner { display: flex; flex-direction: column; justify-content: center; gap: 0.5rem; }
+.owner .chip { border: 2px solid var(--g); background: var(--g-soft); color: var(--g); }
+.owner .down { font: 400 0.8rem var(--mono); color: var(--muted); padding-left: 0.7rem; }
+.panel p { font-size: 0.97rem; color: var(--muted); }
+
+/* lists of points */
+.points { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 2rem 2.5rem; }
+.points div { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; }
+.points h3 { text-shadow: -2px 1px 0 var(--b); }
+.points p { font-size: 1rem; color: var(--muted); }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.7rem 1rem 0.7rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 700 0.75rem var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border-bottom-color: var(--r); }
+td.mono, td .mono { font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.yes { color: var(--g); font-weight: 700; }
+.no { color: var(--muted); }
+
+/* tabs */
+.tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tabs button { font: 700 0.85rem var(--body); color: var(--muted); background: transparent; border: 2px solid var(--line); padding: 0.45rem 0.85rem; cursor: pointer; transition: all 0.2s ease; }
+.tabs button:hover { color: var(--g); border-color: var(--g-line); }
+.tabs button[aria-selected="true"] { color: var(--g); border-color: var(--g); background: var(--g-soft); }
+.snippet { background: var(--black); color: var(--ink); border: 2px solid rgba(0, 255, 0, 0.2); overflow-x: auto; }
+.snippet pre { margin: 0; padding: 1rem 1.1rem; font-size: 0.88rem; line-height: 1.55; }
+.snippet .where { display: block; color: var(--g); opacity: 0.7; }
+
+.status { display: grid; gap: 0.7rem; padding: 0; margin: 0; list-style: none; max-width: 62ch; }
+.status li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 0.75rem; align-items: baseline; }
+.status .tag { font: 700 0.75rem var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.status .tag.ok { color: var(--g); }
+
+footer { border-top: 1px solid var(--r); box-shadow: 0 -2px 0 -1px var(--b); padding-block: 2rem 3rem; font-size: 0.92rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: space-between; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* code panels and library grid, added for the library pages */
+.snippet[hidden] { display: none; }
+.snippet .out { display: block; color: var(--muted); }
+.fig pre { margin: 0; font-size: 0.82rem; line-height: 1.5; overflow-x: auto; color: var(--ink); }
+.fig .panel.good { box-shadow: -3px 3px 0 var(--g), -1.5px -1.5px 0 var(--b), 2px -2px 0 var(--g); }
+.bytes { display: grid; grid-template-columns: 6fr 2fr 8fr; gap: 0.5rem; padding-inline: 3px; }
+.bytes div { background: var(--black); box-shadow: var(--edges); padding: 1rem; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.bytes b { font: 700 1rem var(--body); }
+.bytes span { font-size: 0.85rem; color: var(--muted); }
+.bytes .scope { box-shadow: -3px 3px 0 var(--g), -1.5px -1.5px 0 var(--g), 2px -2px 0 var(--g); }
+.bytes .scope b { color: var(--g); }
+td.wrap-ok { white-space: normal; min-width: 12rem; }
+.libs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1.5rem; padding-inline: 3px; }
+.libs a { background: var(--black); box-shadow: var(--edges); padding: 1.1rem; text-decoration: none; display: flex; flex-direction: column; gap: 0.35rem; }
+.libs a b { font: 700 1.05rem var(--body); }
+.libs a span { font-size: 0.92rem; color: var(--muted); }
+.libs a[aria-current] { box-shadow: -3px 3px 0 var(--g), -1.5px -1.5px 0 var(--g), 2px -2px 0 var(--g); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="name">core-go</span>
+    <nav>
+      <a href="#inside">What is inside</a>
+      <a href="#usage">Usage</a>
+      <a href="https://github.com/pixie-sh/core-go">GitHub</a>
+      <a href="https://pixie.sh">pixie.sh</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>The core of <em>our Go services.</em></h1>
+    <p class="lede">core-go is the shared foundation we build Go services on: configuration, HTTP and Lambda entry points, events over Kafka and SQS, caching, rate limiting, state machines and a set of small typed helpers.</p>
+    <div class="cmd">
+      <pre id="install-cmd">go get github.com/pixie-sh/core-go</pre>
+      <button type="button" id="copy-install" data-copy="install-cmd">Copy</button>
+    </div>
+    <p class="fine">Go 1.25+. MIT licensed. The package map is in the <a href="https://github.com/pixie-sh/core-go#readme">README</a>.</p>
+  </div>
+
+  <section id="problem">
+    <div class="head">
+      <span class="label">The problem</span>
+      <h2>Every new service rebuilds the same plumbing.</h2>
+      <p>Loading configuration, starting a server, handling shutdown, emitting events, caching, logging with a trace ID. None of it is the product, and all of it has to be right.</p>
+    </div>
+    <div class="points">
+      <div><h3>Start from a working base</h3><p>A service implements one interface and gets bootstrap, health, metrics and graceful shutdown.</p></div>
+      <div><h3>Take only what you need</h3><p>Each package is imported on its own. Nothing forces the rest on you.</p></div>
+      <div><h3>The same pieces everywhere</h3><p>Errors, logs, IDs and configuration look alike in every service, so moving between them is easy.</p></div>
+    </div>
+  </section>
+
+  <section id="inside">
+    <div class="head">
+      <span class="label">What is inside</span>
+      <h2>Building blocks in pkg, connected components in infra.</h2>
+      <p><code>pkg</code> has no infrastructure behind it. <code>infra</code> talks to Redis, Kafka, SQS or the database.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Area</th><th>Packages</th><th>What you get</th></tr></thead>
+        <tbody>
+          <tr><td class="wrap-ok">Service</td><td class="wrap-ok"><code>pkg/microservice</code>, <code>pkg/configuration</code>, <code>pkg/context</code></td><td class="wrap-ok">bootstrap through di-go, config from JSON or TOML with environment placeholders, logger and trace ID in the context</td></tr>
+          <tr><td class="wrap-ok">HTTP</td><td class="wrap-ok"><code>pkg/comm/http</code>, <code>pkg/comm/http_middlewares</code>, <code>pkg/comm/rest</code></td><td class="wrap-ok">server, request parsing, logging, metrics, tracing and CORS middlewares, an outbound REST client</td></tr>
+          <tr><td class="wrap-ok">AWS Lambda</td><td class="wrap-ok"><code>pkg/lambda</code> and subpackages</td><td class="wrap-ok">entry points for API Gateway, SQS and Kafka, with routing</td></tr>
+          <tr><td class="wrap-ok">Events</td><td class="wrap-ok"><code>infra/events</code>, <code>infra/message_router</code>, <code>pkg/pubsub</code></td><td class="wrap-ok">typed events, Kafka and SQS producers and consumers, routing and broadcasting</td></tr>
+          <tr><td class="wrap-ok">State</td><td class="wrap-ok"><code>infra/cache</code>, <code>infra/rate_limiter</code>, <code>infra/state_machine</code></td><td class="wrap-ok">Redis cache and locks, rate limiting, state machines with conditions and history</td></tr>
+          <tr><td class="wrap-ok">Operations</td><td class="wrap-ok"><code>infra/cron</code>, <code>infra/database_migrator</code>, <code>pkg/metrics</code></td><td class="wrap-ok">scheduled jobs, migrations as a service, tracing and metrics</td></tr>
+          <tr><td class="wrap-ok">Helpers</td><td class="wrap-ok"><code>pkg/types</code>, <code>pkg/uid</code>, <code>pkg/files</code>, <code>pkg/templates</code></td><td class="wrap-ok">generic slices, sets and maps, scoped IDs, file and image handling, templates</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="usage">
+    <div class="head">
+      <span class="label">Usage</span>
+      <h2>A few of the pieces.</h2>
+    </div>
+    <div>
+      <div class="tabs" role="tablist" aria-label="Example">
+        <button type="button" role="tab" id="tab-usage-0" aria-controls="snip-usage-0" aria-selected="true">Configuration</button>
+        <button type="button" role="tab" id="tab-usage-1" aria-controls="snip-usage-1" aria-selected="false">IDs</button>
+        <button type="button" role="tab" id="tab-usage-2" aria-controls="snip-usage-2" aria-selected="false">Collections</button>
+        <button type="button" role="tab" id="tab-usage-3" aria-controls="snip-usage-3" aria-selected="false">Events</button>
+      </div>
+    </div>
+    <div class="snippet" id="snip-usage-0" role="tabpanel" aria-labelledby="tab-usage-0"><pre>import &quot;github.com/pixie-sh/core-go/pkg/configuration&quot;
+
+type Config struct {
+    Port     int `json:&quot;port&quot;`
+    Database struct {
+        DSN string `json:&quot;dsn&quot;`
+    } `json:&quot;database&quot;`
+}
+
+var cfg Config
+_, err := configuration.StructFromJSONBytesWithEnvReplace(
+    []byte(`{&quot;port&quot;: 8080, &quot;database&quot;: {&quot;dsn&quot;: &quot;${env.DB_DSN}&quot;}}`),
+    &amp;cfg,
+    logger.Logger,
+)
+// with DB_DSN=postgres://app@db:5432/app
+// cfg.Database.DSN == &quot;postgres://app@db:5432/app&quot;</pre></div>
+    <div class="snippet" id="snip-usage-1" role="tabpanel" aria-labelledby="tab-usage-1"><pre>import &quot;github.com/pixie-sh/core-go/pkg/uid&quot;
+
+const ScopeInvoice uid.Scope = 7
+
+id := uid.NewScoped(ScopeInvoice)
+
+fmt.Println(id.String()) // 26-character, time-sortable
+scope, _ := id.Scope()   // 7
+
+same, err := uid.FromString(id.String())</pre></div>
+    <div class="snippet" id="snip-usage-2" role="tabpanel" aria-labelledby="tab-usage-2"><pre>import (
+    &quot;github.com/pixie-sh/core-go/pkg/types/sets&quot;
+    &quot;github.com/pixie-sh/core-go/pkg/types/slices&quot;
+)
+
+names := slices.Map([]int{1, 2, 2, 3}, func(i int) string {
+    return fmt.Sprintf(&quot;user-%d&quot;, i)
+})
+
+slices.Deduplicate(names)        // [user-1 user-2 user-3]
+slices.Contains(names, &quot;user-3&quot;) // true
+
+seen := sets.From([]string{&quot;a&quot;, &quot;b&quot;, &quot;a&quot;}) // 2 items
+_, ok := sets.Contains(seen, &quot;b&quot;)          // true</pre></div>
+    <div class="snippet" id="snip-usage-3" role="tabpanel" aria-labelledby="tab-usage-3"><pre>import &quot;github.com/pixie-sh/core-go/infra/events&quot;
+
+event := events.NewEventWrapper(&quot;evt-1&quot;, &quot;invoice.paid&quot;, InvoicePaid{InvoiceID: id})
+
+// events.Emit and events.EmitBatch send through the default producers.
+// Kafka and SQS implementations live in infra/events/kafka and infra/events/sqs.</pre></div>
+  </section>
+
+  <section id="family">
+    <div class="head">
+      <span class="label">Open source at Pixie</span>
+      <h2>One of a set that works together.</h2>
+      <p>These libraries run in our own services every day. Use one, or all of them.</p>
+    </div>
+    <div class="libs">
+      <a href="https://pixie-sh.github.io/memory-sharing-mcp/"><b>memory-sharing-mcp</b><span>One shared memory store for every agent CLI.</span></a>
+      <a href="https://pixie-sh.github.io/di-go/"><b>di-go</b><span>Dependency injection you can read.</span></a>
+      <a href="https://pixie-sh.github.io/ulid-go/"><b>ulid-go</b><span>Sortable IDs that carry their entity type.</span></a>
+      <a href="https://pixie-sh.github.io/errors-go/"><b>errors-go</b><span>Errors with a code and an HTTP status.</span></a>
+      <a href="https://pixie-sh.github.io/database-helpers-go/"><b>database-helpers-go</b><span>Query pipelines for SQL and Elasticsearch.</span></a>
+      <a href="https://pixie-sh.github.io/core-go/" aria-current="page"><b>core-go</b><span>The core libraries behind our Go services.</span></a>
+    </div>
+  </section>
+
+  <footer>
+    <span>Made by <a href="https://pixie.sh">Pixie</a>. MIT licensed.</span>
+    <a href="https://github.com/pixie-sh/core-go">github.com/pixie-sh/core-go</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll('.tabs').forEach(function (list) {
+    var tabs = list.querySelectorAll('button');
+    function show(tab) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      });
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t); }); });
+    show(tabs[0]);
+  });
+
+  var btn = document.getElementById('copy-install');
+  btn.addEventListener('click', function () {
+    var el = document.getElementById(btn.dataset.copy);
+    function select() {
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    }
+    try {
+      navigator.clipboard.writeText(el.textContent).then(function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+      }, select);
+    } catch (e) { select(); }
+  });
+})();
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -12,6 +13,7 @@ import (
 	"github.com/pixie-sh/logger-go/logger"
 	"github.com/pixie-sh/logger-go/mapper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/pixie-sh/core-go/pkg/env"
 	"github.com/pixie-sh/core-go/pkg/lambda"
@@ -146,6 +148,49 @@ type Configuration struct {
 
 	AuthorizationGate KeyValConfiguration               `json:"key_val_config"`
 	Databases         map[string]database.Configuration `json:"databases"`
+}
+
+func TestSetup_MultiFileMergeOverridesRefBlock(t *testing.T) {
+	dir := t.TempDir()
+
+	base := filepath.Join(dir, "base.json")
+	baseContent := `{
+  "#ref": {
+    "endpoint": {
+      "host": "base-host",
+      "port": 1111
+    }
+  },
+  "service_endpoint": "${#ref.endpoint}"
+}`
+	require.NoError(t, os.WriteFile(base, []byte(baseContent), 0o644))
+
+	overlay := filepath.Join(dir, "overlay.json")
+	overlayContent := `{
+  "#ref": {
+    "endpoint": {
+      "host": "overlay-host",
+      "port": 2222
+    }
+  }
+}`
+	require.NoError(t, os.WriteFile(overlay, []byte(overlayContent), 0o644))
+
+	t.Setenv(env.EnvConfigs, base+","+overlay)
+
+	type endpoint struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}
+	type holderCfg struct {
+		ServiceEndpoint endpoint `json:"service_endpoint"`
+	}
+
+	var cfg holderCfg
+	Setup(&cfg, true, false)
+
+	assert.Equal(t, "overlay-host", cfg.ServiceEndpoint.Host, "overlay #ref.endpoint should override base #ref.endpoint")
+	assert.Equal(t, 2222, cfg.ServiceEndpoint.Port, "overlay #ref.endpoint should override base #ref.endpoint")
 }
 
 func TestDb(t *testing.T) {

@@ -1,0 +1,12 @@
+{
+  "#ref": {
+    "email_service": {
+      "driver": "mailgun",
+      "configuration": {
+        "domain": "${env.MAILGUN_DOMAIN}",
+        "api_key": "${env.MAILGUN_API_KEY}",
+        "from_sender": "${env.EMAIL_FROM_SENDER}"
+      }
+    }
+  }
+}

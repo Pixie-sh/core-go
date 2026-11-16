@@ -1,0 +1,17 @@
+{
+  "#ref": {
+    "email_service": {
+      "driver": "smtp",
+      "configuration": {
+        "host": "${env.MAILPIT_HOST}",
+        "port": "${env.MAILPIT_PORT}",
+        "username": "",
+        "password": "",
+        "from_sender": "${env.EMAIL_FROM_SENDER}",
+        "auth_mode": "none",
+        "tls_mode": "none",
+        "tls_skip_verify": true
+      }
+    }
+  }
+}

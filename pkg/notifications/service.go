@@ -22,6 +22,7 @@ type PushNotificationService interface {
 
 type EmailService interface {
 	Send(ctx context.Context, to string, subject string, body string) (string, error)
+	Resend(ctx context.Context, id string, recipients ...string) (string, error)
 }
 
 type SmsService interface {
